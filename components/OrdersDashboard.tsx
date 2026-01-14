@@ -3,8 +3,8 @@ import { api } from '../api';
 import { format, addDays } from 'date-fns';
 
 const OrdersDashboard: React.FC = () => {
-    // Default to Tomorrow
-    const [selectedDate, setSelectedDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
+    // Default to Today
+    const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [occupancy, setOccupancy] = useState(0);
     const [adjustment, setAdjustment] = useState(0);
     const [loading, setLoading] = useState(false);

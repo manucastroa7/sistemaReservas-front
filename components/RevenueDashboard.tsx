@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Reservation, Room, Payment } from '../types';
 import { format, isSameDay, subDays, startOfMonth, isWithinInterval, parseISO, eachDayOfInterval, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { api } from '../api';
 
 interface RevenueDashboardProps {
     reservations: Reservation[];
@@ -10,6 +11,38 @@ interface RevenueDashboardProps {
 
 const RevenueDashboard: React.FC<RevenueDashboardProps> = ({ reservations, rooms }) => {
     const today = new Date();
+    const [employees, setEmployees] = useState<any[]>([]);
+    const [expenses, setExpenses] = useState<any[]>([]);
+
+    useEffect(() => {
+        api.getEmployees().then(setEmployees).catch(console.error);
+        api.getExpenses().then(setExpenses).catch(console.error);
+    }, []);
+
+    // --- HR Expenses ---
+    const { totalSalaries, registeredCount } = useMemo(() => {
+        let total = 0;
+        let reg = 0;
+        employees.forEach(emp => {
+            if (emp.salary) {
+                let s = Number(emp.salary);
+                if (emp.isRegistered) {
+                    s = s * 1.30; // +30% Social Charges approximation
+                    reg++;
+                }
+                total += s;
+            }
+        });
+        return { totalSalaries: total, registeredCount: reg };
+    }, [employees]);
+
+    // --- Operational Expenses ---
+    const totalExpenses = useMemo(() => {
+        const currentMonthPrefix = format(today, 'yyyy-MM');
+        return expenses
+            .filter(e => e.date.startsWith(currentMonthPrefix))
+            .reduce((sum, e) => sum + Number(e.amount), 0);
+    }, [expenses, today]);
 
     // --- Financial Metrics ---
 
@@ -34,6 +67,12 @@ const RevenueDashboard: React.FC<RevenueDashboardProps> = ({ reservations, rooms
             return total + paidTotal;
         }, 0);
     }, [reservations]);
+
+    // Net Profit estimate (Collected - Salaries - Expenses)
+    // Note: ideally should be Invoiced - Expenses, but cash flow is usually Collected - Expenses
+    // Let's show "Resultado Operativo" as Collected - (Salaries + Expenses)
+    const netResult = totalCollected - (totalSalaries + totalExpenses);
+
 
     // Total Pending (Total - Collected)
     const totalPending = useMemo(() => {
@@ -118,25 +157,31 @@ const RevenueDashboard: React.FC<RevenueDashboardProps> = ({ reservations, rooms
                     subtitle="Total de todas las reservas activas"
                 />
                 <KPICard
-                    title="Total Recaudado"
                     value={`$${totalCollected.toLocaleString()}`}
                     color="bg-emerald-500 text-white"
                     icon="✅"
-                    subtitle="Pagos recibidos hasta hoy"
+                    subtitle="Pagos recibidos del mes"
                 />
                 <KPICard
-                    title="Total por Cobrar"
-                    value={`$${totalPending >= 0 ? totalPending.toLocaleString() : '0'}`}
-                    color="bg-amber-500 text-white"
-                    icon="⏳"
-                    subtitle="Total menos señas recibidas"
+                    title="Gastos Personal"
+                    value={`$${totalSalaries.toLocaleString()}`}
+                    color="bg-rose-500 text-white"
+                    icon="👔"
+                    subtitle={`Salarios + Cargas (${registeredCount} reg.)`}
                 />
                 <KPICard
-                    title="Pasajeros Hoy"
-                    value={totalGuestsToday}
-                    color="bg-pink-600 text-white"
-                    icon="👥"
-                    subtitle="Huéspedes alojados actualmente"
+                    title="Gastos Operativos"
+                    value={`$${totalExpenses.toLocaleString()}`}
+                    color="bg-orange-500 text-white"
+                    icon="💸"
+                    subtitle="Insumos, Servicios, etc."
+                />
+                <KPICard
+                    title="Resultado Operativo"
+                    value={`$${netResult.toLocaleString()}`}
+                    color={netResult >= 0 ? "bg-blue-600 text-white" : "bg-red-600 text-white"}
+                    icon="📊"
+                    subtitle="Recaudado - (Personal + Gastos)"
                 />
             </div>
 
@@ -144,18 +189,20 @@ const RevenueDashboard: React.FC<RevenueDashboardProps> = ({ reservations, rooms
                 {/* Revenue Chart */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-black">
                     <h3 className="font-black text-black mb-6">💵 Ingresos del Mes - {format(today, 'MMMM yyyy', { locale: es })}</h3>
-                    <div className="flex items-end gap-1 h-48 overflow-x-auto">
+                    <div className="flex items-end gap-2 h-64 overflow-x-auto pt-10 pb-2 px-2">
                         {currentMonthDays.map((day, i) => (
-                            <div key={i} className="flex flex-col justify-end items-center gap-2 group min-w-[20px]">
+                            <div key={i} className="flex flex-col justify-end items-center gap-2 group min-w-[40px] h-full">
                                 <div
-                                    className="w-full bg-emerald-500 rounded-t-sm transition-all group-hover:bg-emerald-600 relative"
+                                    className="w-full bg-emerald-500 rounded-t-lg transition-all group-hover:bg-emerald-600 relative"
                                     style={{ height: `${day.income > 0 ? Math.max((day.income / Math.max(...currentMonthDays.map(d => d.income), 10000)) * 100, 2) : 2}%` }}
                                 >
-                                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity font-bold z-10 whitespace-nowrap">
-                                        {day.fullDate}: ${day.income.toLocaleString()}
-                                    </div>
+                                    {day.income > 0 && (
+                                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 -translate-y-full text-slate-700 text-[10px] font-black z-20 whitespace-nowrap bg-white/80 px-1 rounded-sm">
+                                            ${day.income.toLocaleString()}
+                                        </div>
+                                    )}
                                 </div>
-                                <span className="text-[9px] font-black text-black">{day.date}</span>
+                                <span className="text-[10px] font-black text-slate-600 text-center leading-none">{day.date}</span>
                             </div>
                         ))}
                     </div>
@@ -174,7 +221,7 @@ const RevenueDashboard: React.FC<RevenueDashboardProps> = ({ reservations, rooms
                                         style={{ width: `${day.occupancyPct}%` }}
                                     ></div>
                                 </div>
-                                <span className="w-10 font-black text-black text-[10px]">{day.occupancy}/{rooms.length}</span>
+                                <span className="w-10 font-black text-black text-[10px]">{Math.round(day.occupancyPct)}%</span>
                             </div>
                         ))}
                     </div>

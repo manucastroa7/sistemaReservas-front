@@ -7,6 +7,9 @@ interface User {
     role: 'superadmin' | 'admin' | 'employee';
     firstName?: string;
     lastName?: string;
+    hotelId?: string;
+    hotelName?: string;
+    permissions?: string[];
 }
 
 interface AuthContextType {

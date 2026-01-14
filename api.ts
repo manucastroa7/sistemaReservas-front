@@ -1,18 +1,44 @@
 
-import { Reservation, Guest, Room, RoomStatus } from './types';
+import { Reservation, Guest, Room, RoomStatus, Employee, EmployeePayment, Expense } from './types';
 
-const API_BASE_URL = 'http://localhost:3001/api'; // URL de tu NestJS
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'; // URL de tu NestJS
+
+const decodeJwt = (token: string) => {
+  try {
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch (e) {
+    return {};
+  }
+};
+
+const getHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token || ''}`,
+  };
+};
+
+const handleResponse = async (res: Response) => {
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Error desconocido' }));
+    throw new Error(err.message || 'Error en la petición');
+  }
+  return res.json();
+};
 
 export const api = {
   getRooms: async (): Promise<Room[]> => {
-    const res = await fetch(`${API_BASE_URL}/rooms`);
+    const res = await fetch(`${API_BASE_URL}/rooms`, {
+      headers: getHeaders(),
+    });
     return res.json();
   },
 
   createRoom: async (room: Partial<Room>): Promise<Room> => {
     const res = await fetch(`${API_BASE_URL}/rooms`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(room),
     });
     return res.json();
@@ -21,7 +47,7 @@ export const api = {
   updateRoomStatus: async (roomId: number, status: RoomStatus): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/${roomId}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ status }),
     });
   },
@@ -29,7 +55,7 @@ export const api = {
   updateRoom: async (id: number, updates: Partial<Room>): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(updates),
     });
   },
@@ -37,11 +63,21 @@ export const api = {
   deleteRoom: async (roomId: number): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/${roomId}`, {
       method: 'DELETE',
+      headers: getHeaders(),
     });
   },
 
   getReservations: async (): Promise<Reservation[]> => {
-    const res = await fetch(`${API_BASE_URL}/reservations`);
+    const res = await fetch(`${API_BASE_URL}/reservations`, {
+      headers: getHeaders(),
+    });
+    return res.json();
+  },
+
+  getOccupancy: async (date: string): Promise<number> => {
+    const res = await fetch(`${API_BASE_URL}/reservations/occupancy?date=${date}`, {
+      headers: getHeaders(),
+    });
     return res.json();
   },
 
@@ -52,22 +88,16 @@ export const api = {
       end,
       ...(excludeResId ? { exclude: excludeResId } : {})
     });
-    const res = await fetch(`${API_BASE_URL}/reservations/check-availability?${params}`);
+    const res = await fetch(`${API_BASE_URL}/reservations/check-availability?${params}`, {
+      headers: getHeaders(),
+    });
     const data = await res.json();
     return data.available;
   },
 
   saveReservation: async (reservation: any, guest: Guest): Promise<void> => {
-    // If 'reservation' is actually the bulk payload wrapper { reservations: [...] }
     if (reservation.reservations) {
-      // It's already the bulk payload structure we want, but we need to inject the guest
-      // The modal passes: onSave({ reservations }, guest)
-      // BE expects: { reservations: [...], guest: ... } OR { reservation: ..., guest: ... } (Wait, let's check Service)
-
-      // Service check: 
-      // if (payload.reservations) { item.guest = payload.guest }
-      // So we should send { reservations: [...], guest }
-
+      // Bulk payload
       const payload = {
         reservations: reservation.reservations,
         guest
@@ -75,7 +105,7 @@ export const api = {
 
       const res = await fetch(`${API_BASE_URL}/reservations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -85,42 +115,11 @@ export const api = {
       }
     } else {
       // Single reservation
-      // Service check: if (!payload.reservations) -> const guest = await this.guestsRepository.save(payload.guest);
-      // AND const reservation = ... payload ... (Wait, service expects spreads directly?)
-
-      // Let's look at Service lines 57+: 
-      //   const guest = await this.guestsRepository.save(payload.guest);
-      //   const { guest: _, ...resData } = payload;
-
-      // So the Service expects the body to BE the reservation object MERGED with a 'guest' property?
-      // OR does it expect { reservation: ..., guest: ... }?
-      // Line 32 log: JSON.stringify(payload).
-      // If api.ts sends `JSON.stringify({ reservation, guest })`, then payload has `.reservation` and `.guest`.
-      // Service line 35 checks `payload.reservations`.
-
-      // If Api sends `{ reservation: {...}, guest: {...} }`:
-      // Service sees `payload.reservation` (object) and `payload.guest` (object).
-      // Service line 35: `payload.reservations` is undefined.
-      // Service line 57: `this.guestsRepository.save(payload.guest)` -> Works!
-      // Service line 63: `const { guest: _, ...resData } = payload;`
-      // `resData` will contain `reservation: {...}`.
-      // Service line 70: `this.reservationsRepository.create(resData)`.
-      // THIS CREATES A RESERVATION WITH A PROPERTY 'reservation' inside it?! 
-      // THIS IS WRONG. The Service expects a FLAT structure + guest? Or a flattened body?
-
-      // OLD Api sent: `body: JSON.stringify({ reservation, guest })`
-      // OLD Service likely did: `create(@Body() payload)` -> `payload.guest` ... 
-      // Wait, if old service worked, how did it extract fields?
-      // Let's assume the previous service code (which I overwrote partially) handled this or I missed it.
-
-      // Let's Fix Api.ts to send a FLAT merged object.
-      // { ...reservation, guest }
-
       const payload = { ...reservation, guest };
 
       const res = await fetch(`${API_BASE_URL}/reservations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -131,15 +130,26 @@ export const api = {
     }
   },
 
-  getGuests: async (): Promise<Guest[]> => {
-    const res = await fetch(`${API_BASE_URL}/guests`);
+  getGuests: async (page = 1, limit = 1000, search = ''): Promise<{ data: Guest[], total: number }> => {
+    const res = await fetch(`${API_BASE_URL}/guests?page=${page}&limit=${limit}&search=${search}`, {
+      headers: getHeaders(),
+    });
+    return res.json();
+  },
+
+  createGuest: async (guest: Partial<Guest>): Promise<Guest> => {
+    const res = await fetch(`${API_BASE_URL}/guests`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(guest),
+    });
     return res.json();
   },
 
   updateGuest: async (id: string, guest: Partial<Guest>): Promise<void> => {
     await fetch(`${API_BASE_URL}/guests/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(guest),
     });
   },
@@ -147,13 +157,14 @@ export const api = {
   deleteGuest: async (id: string): Promise<void> => {
     await fetch(`${API_BASE_URL}/guests/${id}`, {
       method: 'DELETE',
+      headers: getHeaders(),
     });
   },
 
   updateReservation: async (id: string, update: Partial<Reservation>): Promise<void> => {
     await fetch(`${API_BASE_URL}/reservations/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(update),
     });
   },
@@ -161,7 +172,7 @@ export const api = {
   addMaintenanceTask: async (roomId: number, description: string, requestDate?: string): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/${roomId}/maintenance`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ description, requestDate }),
     });
   },
@@ -169,7 +180,7 @@ export const api = {
   updateMaintenanceTask: async (taskId: string, updates: { status?: 'pending' | 'done', description?: string, requestDate?: string }): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/maintenance/${taskId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(updates),
     });
   },
@@ -177,64 +188,81 @@ export const api = {
   deleteMaintenanceTask: async (taskId: string): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/maintenance/${taskId}`, {
       method: 'DELETE',
+      headers: getHeaders(),
     });
   },
 
   // Auth & Hotels
   createHotel: async (data: any) => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE_URL}/hotels`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: getHeaders(),
       body: JSON.stringify(data),
     });
     return res.json();
   },
 
   getHotels: async () => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE_URL}/hotels`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: getHeaders(),
     });
     return res.json();
   },
 
   createHotelAdmin: async (hotelId: string, userData: any) => {
-    // This endpoint needs to be implemented in backend UsersController
-    // For now we'll assume a generic create user endpoint or update this later
-    // Let's assume we use the users endpoint but passing hotelId
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE_URL}/users`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: getHeaders(),
       body: JSON.stringify({ ...userData, hotelId, role: 'admin' }),
     });
     return res.json();
   },
 
   impersonate: async (hotelId: string) => {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE_URL}/auth/impersonate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: getHeaders(),
       body: JSON.stringify({ hotelId }),
     });
     return res.json();
   },
 
-  getUsers: async (hotelId: string) => {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE_URL}/users?hotelId=${hotelId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+  getUsers: async (): Promise<any[]> => {
+    const res = await fetch(`${API_BASE_URL}/users?hotelId=${decodeJwt(localStorage.getItem('token') || '').hotelId}`, {
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  createUser: async (user: any): Promise<any> => {
+    const res = await fetch(`${API_BASE_URL}/users`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(user),
+    });
+    return handleResponse(res);
+  },
+
+  updateUser: async (id: string, updates: any): Promise<void> => {
+    await fetch(`${API_BASE_URL}/users/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(updates),
+    });
+  },
+
+  updateHotel: async (id: string, data: any): Promise<void> => {
+    await fetch(`${API_BASE_URL}/hotels/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+  },
+
+  getStats: async (start?: string, end?: string) => {
+    const hotelId = decodeJwt(localStorage.getItem('token') || '').hotelId;
+    const res = await fetch(`${API_BASE_URL}/statistics?hotelId=${hotelId}&start=${start}&end=${end}`, {
+      headers: getHeaders(),
     });
     return res.json();
   },
@@ -242,8 +270,118 @@ export const api = {
   blockRoom: async (roomId: number, start: string, end: string, reason: string): Promise<void> => {
     await fetch(`${API_BASE_URL}/reservations/block`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ roomId, start, end, reason }),
     });
+  },
+
+  getRoles: async (): Promise<any[]> => {
+    const res = await fetch(`${API_BASE_URL}/roles`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  createRole: async (role: any): Promise<any> => {
+    const res = await fetch(`${API_BASE_URL}/roles`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(role),
+    });
+    return handleResponse(res);
+  },
+
+  updateRole: async (id: string, updates: any): Promise<void> => {
+    await fetch(`${API_BASE_URL}/roles/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(updates),
+    });
+  },
+
+  deleteRole: async (id: string): Promise<void> => {
+    await fetch(`${API_BASE_URL}/roles/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+  },
+
+  normalizeGuests: async (): Promise<number> => {
+    const res = await fetch(`${API_BASE_URL}/guests/normalize`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return res.json();
+  },
+
+  // Employees
+  getEmployees: async (): Promise<Employee[]> => {
+    const res = await fetch(`${API_BASE_URL}/employees`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  createEmployee: async (data: Partial<Employee>): Promise<Employee> => {
+    const res = await fetch(`${API_BASE_URL}/employees`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  updateEmployee: async (id: string, data: Partial<Employee>): Promise<void> => {
+    await fetch(`${API_BASE_URL}/employees/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+  },
+
+  deleteEmployee: async (id: string): Promise<void> => {
+    await fetch(`${API_BASE_URL}/employees/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+  },
+
+  getEmployeePayments: async (id: string): Promise<EmployeePayment[]> => {
+    const res = await fetch(`${API_BASE_URL}/employees/${id}/payments`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  addEmployeePayment: async (id: string, data: Partial<EmployeePayment>): Promise<EmployeePayment> => {
+    const res = await fetch(`${API_BASE_URL}/employees/${id}/payments`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  // Expenses
+  getExpenses: async (): Promise<Expense[]> => {
+    const res = await fetch(`${API_BASE_URL}/expenses`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  createExpense: async (data: Partial<Expense>): Promise<Expense> => {
+    const res = await fetch(`${API_BASE_URL}/expenses`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  deleteExpense: async (id: string): Promise<void> => {
+    await fetch(`${API_BASE_URL}/expenses/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+  },
+
+  getExpensesStats: async (month: string): Promise<{ total: number, byCategory: Record<string, number> }> => {
+    const res = await fetch(`${API_BASE_URL}/expenses/stats?month=${month}`, { headers: getHeaders() });
+    return handleResponse(res);
   }
 };

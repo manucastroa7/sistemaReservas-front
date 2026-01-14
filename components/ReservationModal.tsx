@@ -397,6 +397,69 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     }
   };
 
+  // 5. MAINTENANCE / BLOCK VIEW
+  if (reservation?.status === 'maintenance') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-red-200">
+          <div className="bg-rose-50 px-8 py-6 border-b border-rose-100 flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-black text-rose-600 tracking-tight">HABITACIÓN BLOQUEADA</h2>
+              <p className="text-xs font-bold text-rose-400 uppercase">Gestión de Bloqueos</p>
+            </div>
+            <button onClick={onClose} className="w-10 h-10 rounded-full hover:bg-rose-100 flex items-center justify-center transition-colors text-rose-400 hover:text-rose-700">
+              <span className="text-2xl">×</span>
+            </button>
+          </div>
+
+          <div className="p-8 space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Habitación</label>
+                <div className="text-xl font-black text-slate-800">
+                  {formData.roomIds.length > 0 ? formData.roomIds.join(', ') : formData.roomId}
+                </div>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fechas</label>
+                <div className="text-sm font-bold text-slate-700">
+                  {format(parseISO(formData.checkIn), 'dd/MM/yyyy')} <span className="text-slate-300 mx-1">→</span> {format(parseISO(formData.lastNight), 'dd/MM/yyyy')}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 p-5 rounded-xl border border-amber-100">
+              <label className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-2">Motivo del Bloqueo</label>
+              <div className="font-bold text-amber-900 text-lg">
+                {formData.notes || 'Sin motivo especificado'}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 rounded-xl font-bold text-xs hover:bg-slate-200 transition-colors uppercase tracking-widest text-slate-500"
+            >
+              Cerrar
+            </button>
+            <button
+              onClick={async () => {
+                if (window.confirm('¿Está seguro de desbloquear esta habitación?')) {
+                  await api.updateReservation(reservation.id, { status: 'cancelled' });
+                  window.location.reload();
+                }
+              }}
+              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-xs transition-all shadow-lg shadow-emerald-200 uppercase tracking-widest flex items-center gap-2"
+            >
+              ✅ Desbloquear
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
       {/* Payment Modal */}

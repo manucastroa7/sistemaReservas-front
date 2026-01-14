@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Room, Reservation, Guest } from '../types';
 import {
   format,
@@ -168,7 +168,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                   return (
                     <td
                       key={day.toISOString()}
-                      onMouseDown={(e) => {
+                      onMouseDown={() => {
                         if (!res) handleMouseDown(day, room.id);
                       }}
                       onMouseEnter={() => handleMouseEnter(day, room.id)}
@@ -201,6 +201,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
 
                           if (res.status === 'checked-in') bgColor = 'bg-blue-600 text-white border-blue-700';
                           if (res.status === 'checked-out') bgColor = 'bg-slate-500 text-white border-slate-600';
+                          if (res.status === 'maintenance') bgColor = 'bg-red-600 text-white border-red-700 font-black tracking-widest';
 
                           return (
                             <div
@@ -209,7 +210,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                               className={`absolute inset-y-1 left-0 right-0 mx-0.5 rounded-md px-1 text-[9px] font-bold overflow-hidden transition-all hover:brightness-95 flex items-center shadow-sm border ${bgColor}`}
                             >
                               {showName && (
-                                <span className="truncate">{getGuestName(res.guestId)}</span>
+                                <span className="truncate">{res.status === 'maintenance' ? `BLOQUEADA - ${res.notes || ''}` : getGuestName(res.guestId)}</span>
                               )}
                             </div>
                           );

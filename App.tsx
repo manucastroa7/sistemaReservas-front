@@ -13,7 +13,11 @@ import ReservationModal from './components/ReservationModal';
 import Login from './components/Login';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import OrdersDashboard from './components/OrdersDashboard';
+import HumanResources from './components/HumanResources';
+import ExpensesManagement from './components/ExpensesManagement';
+import RoleManagement from './components/RoleManagement';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import PassengerDatabase from './components/PassengerDatabase';
 import { format } from 'date-fns';
 
 const MainApp: React.FC = () => {
@@ -26,22 +30,25 @@ const MainApp: React.FC = () => {
   const [isResModalOpen, setIsResModalOpen] = useState(false);
   const [selectedResId, setSelectedResId] = useState<string | null>(null);
   const [initialResData, setInitialResData] = useState<{ date: Date; roomId: number; endDate?: Date } | null>(null);
+  const [showRoleModal, setShowRoleModal] = useState(false);
 
   useEffect(() => {
-    loadData(true);
-  }, []);
+    if (isAuthenticated) {
+      loadData(true);
+    }
+  }, [isAuthenticated]);
 
   const loadData = async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const [r, g, res] = await Promise.all([
+      const [r, gData, res] = await Promise.all([
         api.getRooms(),
-        api.getGuests(),
+        api.getGuests(), // Defaults to page 1, limit 1000
         api.getReservations()
       ]);
-      setRooms(r);
-      setGuests(g);
-      setReservations(res);
+      setRooms(Array.isArray(r) ? r : []);
+      setGuests(gData.data || []);
+      setReservations(Array.isArray(res) ? res : []);
     } catch (error) {
       console.error("Error cargando datos del servidor", error);
     } finally {
@@ -66,15 +73,13 @@ const MainApp: React.FC = () => {
   };
 
   const handleAddGuest = async (guest: Guest) => {
-    // Assuming api.saveGuest exists or needs to be added? api.ts has getGuests but maybe saveGuest is missing in frontend/api.ts logic?
-    // Checking frontend/api.ts in step 183: getGuests exists. saveReservation exists.
-    // backend/guests.service.ts has create.
-    // frontend/api.ts DOES NOT have createGuest.
-    // I should probably add it or just log for now? 
-    // Wait, the error is type mismatch. I'll define the function to match signature.
-    console.log("Adding guest", guest);
-    // await api.createGuest(guest); // Logic missing in api.ts
-    // loadData();
+    try {
+      await api.createGuest(guest);
+      loadData();
+    } catch (e: any) {
+      console.error(e);
+      alert('Error al crear el pasajero: ' + e.message);
+    }
   };
 
   const handleAddRoom = async (room: { id: number; type: string; capacity: number }) => {
@@ -125,6 +130,7 @@ const MainApp: React.FC = () => {
         currentView={currentView}
         setView={setCurrentView}
         onNewRes={() => { setSelectedResId(null); setInitialResData(null); setIsResModalOpen(true); }}
+        onConfigRoles={() => setShowRoleModal(true)}
       />
 
       <main className="flex-1 overflow-auto relative">
@@ -133,7 +139,8 @@ const MainApp: React.FC = () => {
             <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter">
               {currentView === 'dashboard' && 'Panel de Gestión'}
               {currentView === 'calendar' && 'Calendario'}
-              {currentView === 'guests' && 'Pasajeros'}
+              {currentView === 'guests' && 'Reservas Pasajeros'}
+              {currentView === 'passenger-db' && 'Base de Datos Pasajeros'}
               {currentView === 'rooms' && 'Habitaciones'}
               {currentView === 'commissions' && 'Comisiones'}
               {currentView === 'orders' && 'Pedidos Panadería'}
@@ -141,7 +148,7 @@ const MainApp: React.FC = () => {
           </div>
 
           <div className="flex flex-col items-center">
-            <h2 className="text-lg font-black text-slate-700 tracking-tight uppercase">Gran Hotel Avenida</h2>
+            <h2 className="text-lg font-black text-slate-700 tracking-tight uppercase">{user?.hotelName || 'Gran Hotel Avenida'}</h2>
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               {format(new Date(), "eeee, d 'de' MMMM yyyy")}
             </span>
@@ -152,7 +159,9 @@ const MainApp: React.FC = () => {
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-bold text-slate-700">{user?.firstName} {user?.lastName || ''}</p>
-                <button className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase">Configurar</button>
+                {(user?.role === 'admin') && (
+                  <button onClick={() => setShowRoleModal(true)} className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase">Configurar</button>
+                )}
               </div>
               <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500">
                 {user?.firstName?.[0] || 'A'}
@@ -188,6 +197,13 @@ const MainApp: React.FC = () => {
               guests={guests}
               onAddGuest={handleAddGuest}
               onEditRes={(id) => { setSelectedResId(id); setIsResModalOpen(true); }}
+              onNewRes={() => { setSelectedResId(null); setInitialResData(null); setIsResModalOpen(true); }}
+            />
+          )}
+          {currentView === 'passenger-db' && (
+            <PassengerDatabase
+              guests={guests}
+              onAddGuest={handleAddGuest}
             />
           )}
           {currentView === 'rooms' && (
@@ -242,6 +258,8 @@ const MainApp: React.FC = () => {
             <RevenueDashboard reservations={reservations} rooms={rooms} />
           )}
           {currentView === 'orders' && <OrdersDashboard />}
+          {currentView === 'hr' && <HumanResources />}
+          {currentView === 'expenses' && <ExpensesManagement />}
         </div>
       </main>
 
@@ -258,6 +276,8 @@ const MainApp: React.FC = () => {
           initialEndDate={initialResData?.endDate}
         />
       )}
+
+      {showRoleModal && <RoleManagement onClose={() => setShowRoleModal(false)} user={user} />}
     </div>
   );
 
