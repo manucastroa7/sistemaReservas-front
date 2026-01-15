@@ -1,7 +1,33 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-const API_URL = 'http://localhost:3001/api/auth/login';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'; // URL de tu NestJS
+
+const decodeJwt = (token: string) => {
+    try {
+        return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
+        return {};
+    }
+};
+
+const getHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || ''}`,
+    };
+};
+
+const handleResponse = async (res: Response) => {
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error desconocido' }));
+        throw new Error(err.message || 'Error en la petición');
+    }
+    return res.json();
+};
+
 
 const Login: React.FC = () => {
     const { login } = useAuth();
@@ -16,7 +42,7 @@ const Login: React.FC = () => {
         setError('');
 
         try {
-            const res = await fetch(API_URL, {
+            const res = await fetch(`${API_BASE_URL}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
