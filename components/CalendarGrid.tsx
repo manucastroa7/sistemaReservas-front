@@ -75,6 +75,31 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
     return guest ? `${guest.lastName}, ${guest.name}` : 'Anónimo';
   };
 
+  // Generate consistent color based on GROUP (empresa/agencia) or individual guest
+  const getReservationColor = (groupId: string | undefined, guestId: string) => {
+    const identifier = groupId || guestId;
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+      hash = identifier.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const colors = [
+      { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', ring: 'ring-blue-400' },
+      { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300', ring: 'ring-purple-400' },
+      { bg: 'bg-pink-100', text: 'text-pink-800', border: 'border-pink-300', ring: 'ring-pink-400' },
+      { bg: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-300', ring: 'ring-indigo-400' },
+      { bg: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-300', ring: 'ring-cyan-400' },
+      { bg: 'bg-teal-100', text: 'text-teal-800', border: 'border-teal-300', ring: 'ring-teal-400' },
+      { bg: 'bg-lime-100', text: 'text-lime-800', border: 'border-lime-300', ring: 'ring-lime-400' },
+      { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', ring: 'ring-yellow-400' },
+      { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', ring: 'ring-orange-400' },
+      { bg: 'bg-rose-100', text: 'text-rose-800', border: 'border-rose-300', ring: 'ring-rose-400' },
+      { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800', border: 'border-fuchsia-300', ring: 'ring-fuchsia-400' },
+      { bg: 'bg-violet-100', text: 'text-violet-800', border: 'border-violet-300', ring: 'ring-violet-400' },
+    ];
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+
   const getResForRoomAndDay = (roomId: number, day: Date) => {
     return reservations.find(res => {
       if (res.status === 'cancelled') return false;
@@ -112,10 +137,12 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
             →
           </button>
         </div>
-        <div className="flex items-center gap-4 text-xs font-medium">
-          <div className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-500 rounded-sm"></span> Reservado</div>
-          <div className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Check-in</div>
-          <div className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-500 rounded-sm"></span> Mantenimiento</div>
+        <div className="flex items-center gap-4 text-xs font-bold">
+          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-gradient-to-r from-blue-100 via-purple-100 to-pink-100 rounded-sm border border-slate-300"></span> Colores únicos por reserva</div>
+          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-white rounded-sm border-2 border-emerald-500 ring-2 ring-emerald-400 ring-offset-1"></span> Saldado</div>
+          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-white rounded-sm border-2 border-amber-500 ring-2 ring-amber-400 ring-offset-1"></span> Seña/Parcial</div>
+          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-blue-600 rounded-sm"></span> Check-in</div>
+          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-red-600 rounded-sm"></span> Bloqueada</div>
         </div>
       </div>
 
@@ -150,12 +177,14 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                   </div>
                   <span className="text-[10px] text-black font-black truncate">{room.type}</span>
                 </td>
-                {days.map((day, index) => {
+                {days.map((day) => {
                   const res = getResForRoomAndDay(room.id, day);
-                  const isCheckIn = res && isSameDay(parseISO(res.checkIn), day);
                   const isMaintenance = room.status === 'maintenance';
-                  const isFirstVisibleDay = index === 0 && res; // Show name if it's the first visible day of the grid and reservation exists
-                  const showName = isCheckIn || isFirstVisibleDay;
+
+                  // Check if this date is in the past (before today)
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0); // Reset to start of day for accurate comparison
+                  const isPastDate = day < today;
 
                   // Selection Highlight Logic
                   let isSelected = false;
@@ -163,6 +192,18 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                     const start = selectionStart.date < selectionEnd.date ? selectionStart.date : selectionEnd.date;
                     const end = selectionStart.date < selectionEnd.date ? selectionEnd.date : selectionStart.date;
                     isSelected = isWithinInterval(day, { start, end });
+                  }
+
+                  // Determine cell background color
+                  let cellBg = '';
+                  if (isSelected) {
+                    cellBg = 'bg-blue-300'; // Selection highlight
+                  } else if (!res && isPastDate) {
+                    cellBg = 'bg-slate-800'; // Empty past dates = dark/black
+                  } else if ([0, 6].includes(day.getDay())) {
+                    cellBg = 'bg-slate-50/50'; // Weekends
+                  } else {
+                    cellBg = 'hover:bg-slate-50'; // Default hover
                   }
 
                   return (
@@ -173,9 +214,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                       }}
                       onMouseEnter={() => handleMouseEnter(day, room.id)}
                       onDoubleClick={() => onCellClick(day, room.id, day)} // Double click = Single Day
-                      className={`border-r border-b border-black relative group cursor-pointer select-none ${isSelected ? 'bg-blue-300' : // Darker paint color
-                        [0, 6].includes(day.getDay()) ? 'bg-slate-50/50' : 'hover:bg-slate-50'
-                        }`}
+                      className={`border-r border-b border-black relative group cursor-pointer select-none ${cellBg}`}
                     >
                       {res && (
                         (() => {
@@ -187,31 +226,40 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                           const totalPaid = (res.payments || []).reduce((sum, p) => sum + p.amount, 0);
                           const totalDiff = (totalStay - discount) + totalExtras - totalPaid;
 
-                          let bgColor = 'bg-blue-100 text-blue-700 border-blue-200'; // Default
+                          // Get color based on GROUP (if exists) or individual GUEST
+                          const colorScheme = getReservationColor(res.groupId, res.guestId);
+                          let bgColor = `${colorScheme.bg} ${colorScheme.text} ${colorScheme.border} ring-2 ${colorScheme.ring}`;
 
+                          // Override with status-specific colors when needed
                           if (res.status === 'cancelled') {
-                            bgColor = 'bg-rose-100 text-rose-700 border-rose-200 decoration-rose-700 line-through';
+                            bgColor = 'bg-slate-200 text-slate-500 border-slate-300 line-through ring-2 ring-slate-400';
+                          } else if (res.status === 'checked-in') {
+                            bgColor = 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-500';
+                          } else if (res.status === 'checked-out') {
+                            bgColor = 'bg-slate-600 text-white border-slate-700 ring-2 ring-slate-500';
+                          } else if (res.status === 'maintenance') {
+                            bgColor = 'bg-red-600 text-white border-red-700 font-black tracking-widest ring-2 ring-red-500';
                           } else if (totalDiff <= 0) {
-                            bgColor = 'bg-emerald-100 text-emerald-700 border-emerald-200 font-black'; // Saldado
+                            // Fully paid - add green ring for emphasis
+                            bgColor = `${colorScheme.bg} ${colorScheme.text} ${colorScheme.border} ring-2 ring-emerald-500 font-extrabold`;
                           } else if (totalPaid > 0) {
-                            bgColor = 'bg-amber-100 text-amber-700 border-amber-200'; // Señado / Parcial
-                          } else {
-                            bgColor = 'bg-orange-100 text-orange-700 border-orange-200'; // Adeuda Total
+                            // Partially paid - add amber ring
+                            bgColor = `${colorScheme.bg} ${colorScheme.text} ${colorScheme.border} ring-2 ring-amber-500`;
                           }
 
-                          if (res.status === 'checked-in') bgColor = 'bg-blue-600 text-white border-blue-700';
-                          if (res.status === 'checked-out') bgColor = 'bg-slate-500 text-white border-slate-600';
-                          if (res.status === 'maintenance') bgColor = 'bg-red-600 text-white border-red-700 font-black tracking-widest';
+                          const fullName = res.status === 'maintenance' ? `🔧 ${res.notes || 'BLOQUEADA'}` : getGuestName(res.guestId);
+                          const displayName = res.status === 'maintenance' ? fullName : fullName.split(',')[0]; // Show only Last Name
 
                           return (
                             <div
+                              title={fullName} // Show full name on hover
                               onMouseDown={(e) => e.stopPropagation()} // Prevent drag start on reservations
                               onClick={(e) => { e.stopPropagation(); onResClick(res.id); }}
-                              className={`absolute inset-y-1 left-0 right-0 mx-0.5 rounded-md px-1 text-[9px] font-bold overflow-hidden transition-all hover:brightness-95 flex items-center shadow-sm border ${bgColor}`}
+                              className={`absolute inset-y-0.5 left-0 right-0 px-1 text-[11px] font-extrabold overflow-hidden whitespace-nowrap transition-all hover:brightness-95 flex items-center shadow-md border-2 ${bgColor}`}
                             >
-                              {showName && (
-                                <span className="truncate">{res.status === 'maintenance' ? `BLOQUEADA - ${res.notes || ''}` : getGuestName(res.guestId)}</span>
-                              )}
+                              <span className="truncate w-full">
+                                {displayName}
+                              </span>
                             </div>
                           );
                         })()

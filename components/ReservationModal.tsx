@@ -194,6 +194,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     if (formData.dni.length >= 6) {
       const g = guests.find(guest => guest.dni === formData.dni);
       if (g) {
+        // Guest found - populate all fields
         setFormData((prev: any) => ({
           ...prev,
           guestId: g.id,
@@ -202,7 +203,19 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
           email: g.email,
           phone: g.phone
         }));
+      } else {
+        // DNI entered but no guest found - clear guestId to create new guest
+        setFormData((prev: any) => ({
+          ...prev,
+          guestId: ''
+        }));
       }
+    } else {
+      // DNI too short or deleted - clear guestId for new guest
+      setFormData((prev: any) => ({
+        ...prev,
+        guestId: ''
+      }));
     }
   }, [formData.dni, guests]);
 

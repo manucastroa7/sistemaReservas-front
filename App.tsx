@@ -58,13 +58,13 @@ const MainApp: React.FC = () => {
 
   const handleUpdateRoomStatus = async (roomId: number, status: RoomStatus) => {
     await api.updateRoomStatus(roomId, status);
-    loadData();
+    await loadData();
   };
 
   const handleSaveReservation = async (res: Reservation, guest: Guest) => {
     try {
       await api.saveReservation(res, guest);
-      loadData();
+      await loadData(); // Esperar a que se recarguen los datos antes de cerrar
       setIsResModalOpen(false);
     } catch (e: any) {
       console.error(e);
@@ -75,7 +75,7 @@ const MainApp: React.FC = () => {
   const handleAddGuest = async (guest: Guest) => {
     try {
       await api.createGuest(guest);
-      loadData();
+      await loadData();
     } catch (e: any) {
       console.error(e);
       alert('Error al crear el pasajero: ' + e.message);
@@ -84,7 +84,7 @@ const MainApp: React.FC = () => {
 
   const handleAddRoom = async (room: { id: number; type: string; capacity: number }) => {
     await api.createRoom(room as any);
-    loadData();
+    await loadData();
   };
 
   const handleAddMaintenance = async (roomId: number, desc: string, date?: string) => {
@@ -94,21 +94,21 @@ const MainApp: React.FC = () => {
     } else {
       await api.addMaintenanceTask(roomId, desc, date);
     }
-    loadData();
+    await loadData();
   };
 
   const handleUpdateMaintenance = async (taskId: string, updates: any) => {
     await api.updateMaintenanceTask(taskId, updates);
-    loadData();
+    await loadData();
   };
   const handleDeleteMaintenance = async (taskId: string) => {
     await api.deleteMaintenanceTask(taskId);
-    loadData();
+    await loadData();
   };
 
   const handleUpdateRoom = async (id: number, updates: any) => {
     await api.updateRoom(id, updates);
-    loadData();
+    await loadData();
   };
   if (!isAuthenticated) {
     return <Login />;
@@ -212,14 +212,14 @@ const MainApp: React.FC = () => {
               onUpdateStatus={handleUpdateRoomStatus}
               onAddRoom={handleAddRoom}
               onUpdateRoom={handleUpdateRoom}
-              onDeleteRoom={async (id) => { await api.deleteRoom(id); loadData(); }}
+              onDeleteRoom={async (id) => { await api.deleteRoom(id); await loadData(); }}
               onAddMaintenance={handleAddMaintenance}
               onUpdateMaintenance={handleUpdateMaintenance}
               onDeleteMaintenance={handleDeleteMaintenance}
               reservations={reservations} // Pass reservations to find active blocks
               onBlockRoom={async (roomId, start, end, reason) => {
                 await api.blockRoom(roomId, start, end, reason);
-                loadData();
+                await loadData();
               }}
               onUnblockRoom={async (roomId, start, end) => {
                 const affected = reservations.filter(r =>
@@ -243,7 +243,7 @@ const MainApp: React.FC = () => {
 
                 // Also update room status to dirty if needed
                 await api.updateRoomStatus(roomId, 'dirty');
-                loadData();
+                await loadData();
               }}
             />
           )}
@@ -251,7 +251,7 @@ const MainApp: React.FC = () => {
             <CommissionReport
               reservations={reservations}
               guests={guests}
-              onUpdateReservation={(res) => { api.saveReservation(res, guests.find(g => g.id === res.guestId)!); loadData(); }}
+              onUpdateReservation={async (res) => { await api.saveReservation(res, guests.find(g => g.id === res.guestId)!); await loadData(); }}
             />
           )}
           {currentView === 'statistics' && (
