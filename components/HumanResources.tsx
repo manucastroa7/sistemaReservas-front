@@ -9,6 +9,8 @@ const HumanResources: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [positions, setPositions] = useState<any[]>([]);
+    const [isPositionsModalOpen, setIsPositionsModalOpen] = useState(false);
 
     useEffect(() => {
         loadEmployees();
@@ -17,10 +19,14 @@ const HumanResources: React.FC = () => {
     const loadEmployees = async () => {
         setLoading(true);
         try {
-            const data = await api.getEmployees();
-            setEmployees(data);
+            const [empData, posData] = await Promise.all([
+                api.getEmployees(),
+                api.getPositions()
+            ]);
+            setEmployees(empData);
+            setPositions(posData);
         } catch (error) {
-            console.error('Error loading employees', error);
+            console.error('Error loading data', error);
         } finally {
             setLoading(false);
         }
@@ -43,93 +49,133 @@ const HumanResources: React.FC = () => {
                     <h1 className="text-4xl font-black text-slate-800 uppercase tracking-tight mb-2">Recursos Humanos</h1>
                     <p className="text-slate-500 font-medium">Gestión de empleados, pagos y documentación.</p>
                 </div>
-                <button
-                    onClick={handleNewEmployee}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-200 transition-all flex items-center gap-2"
-                >
-                    <span>+</span> Nuevo Empleado
-                </button>
+                <div className="flex gap-4">
+                    <button
+                        onClick={() => setIsPositionsModalOpen(true)}
+                        className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-xs shadow-sm transition-all"
+                    >
+                        Gestionar Puestos
+                    </button>
+                    <button
+                        onClick={handleNewEmployee}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-200 transition-all flex items-center gap-2"
+                    >
+                        <span>+</span> Nuevo Empleado
+                    </button>
+                </div>
             </header>
 
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
-                {loading ? (
-                    <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Cargando personal...</div>
-                ) : (
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-black text-[10px] uppercase tracking-widest">
-                            <tr>
-                                <th className="px-6 py-4 text-left">Empleado</th>
-                                <th className="px-6 py-4 text-left">Puesto</th>
-                                <th className="px-6 py-4 text-left">Condición</th>
-                                <th className="px-6 py-4 text-left">Salario</th>
-                                <th className="px-6 py-4 text-left">Fecha Pago</th>
-                                <th className="px-6 py-4 text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {employees.map(emp => (
-                                <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs uppercase">
-                                                {emp.firstName?.[0]}{emp.lastName?.[0]}
-                                            </div>
-                                            <div>
-                                                <p className="font-black text-slate-700">{emp.firstName} {emp.lastName}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold tracking-wide">DNI: {emp.dni || '-'}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded text-xs uppercase tracking-wider">
-                                            {emp.position || 'Sin asignar'}
+            {loading ? (
+                <div className="p-12 text-center text-slate-400 font-bold animate-pulse">Cargando personal...</div>
+            ) : (
+                <div className="space-y-8">
+                    {positions.map(pos => {
+                        const empInPos = employees.filter(e => e.position === pos.name);
+                        // if (empInPos.length === 0) return null; // Optional: Hide empty positions
+
+                        return (
+                            <div key={pos.id} className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="font-black text-slate-800 uppercase tracking-tight">{pos.name}</h3>
+                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-black uppercase rounded-md tracking-wider">
+                                            Base: ${Number(pos.baseSalary).toLocaleString()}
                                         </span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span className={`self-start font-black text-[10px] px-2 py-1 rounded-full uppercase tracking-wider ${emp.status === 'Activo' || !emp.status ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-                                                {emp.status || 'Activo'}
-                                            </span>
-                                            {emp.isRegistered && (
-                                                <span className="self-start text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded border border-emerald-100 uppercase">
-                                                    En Blanco
-                                                </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 font-mono font-bold text-slate-700">
-                                        {emp.salary ? `$ ${Number(emp.salary).toLocaleString()}` : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-500 font-bold text-xs">
-                                        {emp.paymentDay ? `Día ${emp.paymentDay}` : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button
-                                            onClick={() => handleEdit(emp)}
-                                            className="text-blue-600 hover:text-blue-800 font-black text-xs uppercase hover:underline"
-                                        >
-                                            Ver Ficha
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                            {employees.length === 0 && (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium italic">
-                                        No hay empleados registrados.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                )}
-            </div>
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{empInPos.length} Empleados</span>
+                                </div>
+
+                                <table className="w-full text-sm">
+                                    <thead className="bg-white text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left">Empleado</th>
+                                            <th className="px-6 py-3 text-left">Condición</th>
+                                            <th className="px-6 py-3 text-left">Salario Real</th>
+                                            <th className="px-6 py-3 text-right">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {empInPos.map(emp => (
+                                            <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs uppercase">
+                                                            {emp.firstName?.[0]}{emp.lastName?.[0]}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-slate-700">{emp.firstName} {emp.lastName}</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${emp.status === 'Activo' || !emp.status ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'
+                                                        }`}>
+                                                        {emp.status || 'Activo'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 font-mono font-bold text-slate-600">
+                                                    {emp.salary ? `$${Number(emp.salary).toLocaleString()}` : '-'}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button onClick={() => handleEdit(emp)} className="text-blue-600 hover:text-blue-800 font-bold text-xs uppercase">Ver Ficha</button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {empInPos.length === 0 && (
+                                            <tr><td colSpan={4} className="p-4 text-center text-slate-400 italic text-xs">No hay empleados en este puesto</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        );
+                    })}
+
+                    {/* Unassigned Employees */}
+                    {employees.filter(e => !positions.find(p => p.name === e.position)).length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                            <div className="px-6 py-4 bg-orange-50 border-b border-orange-100">
+                                <h3 className="font-black text-orange-800 uppercase tracking-tight">Sin Puesto Asignado (o Puesto Eliminado)</h3>
+                            </div>
+                            <table className="w-full text-sm">
+                                <thead className="bg-white text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left">Empleado</th>
+                                        <th className="px-6 py-3 text-left">Puesto Actual</th>
+                                        <th className="px-6 py-3 text-right">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {employees.filter(e => !positions.find(p => p.name === e.position)).map(emp => (
+                                        <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-6 py-4 font-bold text-slate-700">{emp.firstName} {emp.lastName}</td>
+                                            <td className="px-6 py-4 text-xs font-mono">{emp.position || '-'}</td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button onClick={() => handleEdit(emp)} className="text-blue-600 hover:text-blue-800 font-bold text-xs uppercase">Asignar</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                </div>
+            )}
+
+            {isPositionsModalOpen && (
+                <PositionsModal
+                    onClose={() => setIsPositionsModalOpen(false)}
+                    onUpdate={() => loadEmployees()}
+                    positions={positions}
+                />
+            )}
 
             {isEditModalOpen && (
                 <HREmployeeModal
                     employee={selectedEmployee}
                     onClose={() => setIsEditModalOpen(false)}
                     onSave={() => { setIsEditModalOpen(false); loadEmployees(); }}
+                    positions={positions}
                 />
             )}
         </div>
@@ -140,9 +186,72 @@ interface HREmployeeModalProps {
     employee: Employee | null;
     onClose: () => void;
     onSave: () => void;
+    positions: any[];
 }
 
-const HREmployeeModal: React.FC<HREmployeeModalProps> = ({ employee, onClose, onSave }) => {
+const PositionsModal = ({ onClose, onUpdate, positions }: any) => {
+    const [newPos, setNewPos] = useState({ name: '', baseSalary: 0 });
+
+    const handleCreate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            await api.createPosition(newPos);
+            setNewPos({ name: '', baseSalary: 0 });
+            onUpdate();
+        } catch (error) {
+            alert('Error al crear puesto');
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('¿Eliminar este puesto?')) return;
+        try {
+            await api.deletePosition(id);
+            onUpdate();
+        } catch (error) {
+            alert('Error al eliminar puesto');
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-black text-slate-800 uppercase tracking-tight text-lg">Gestionar Puestos</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+                </div>
+
+                <form onSubmit={handleCreate} className="flex gap-2 items-end mb-8">
+                    <div className="flex-1">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">Nombre Puesto</label>
+                        <input className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                            value={newPos.name} onChange={e => setNewPos({ ...newPos, name: e.target.value })} required />
+                    </div>
+                    <div className="w-32">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">Salario Base</label>
+                        <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                            value={newPos.baseSalary || ''} onChange={e => setNewPos({ ...newPos, baseSalary: parseFloat(e.target.value) })} required />
+                    </div>
+                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-black text-xs uppercase self-end h-[38px]">+</button>
+                </form>
+
+                <div className="space-y-2">
+                    {positions.map((p: any) => (
+                        <div key={p.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-100">
+                            <div>
+                                <p className="font-black text-slate-700">{p.name}</p>
+                                <p className="text-xs text-emerald-600 font-mono font-bold">${Number(p.baseSalary).toLocaleString()}</p>
+                            </div>
+                            <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 text-xs font-black uppercase">Eliminar</button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const HREmployeeModal: React.FC<HREmployeeModalProps> = ({ employee, onClose, onSave, positions }) => {
     const [activeTab, setActiveTab] = useState<'info' | 'payments' | 'salary'>('info');
     const [loading, setLoading] = useState(false);
 
@@ -313,11 +422,19 @@ const HREmployeeModal: React.FC<HREmployeeModalProps> = ({ employee, onClose, on
                                 <div className="grid grid-cols-2 gap-4 mb-4">
                                     <div>
                                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">Puesto</label>
-                                        <input
+                                        <select
                                             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
                                             value={formData.position || ''}
-                                            onChange={e => setFormData({ ...formData, position: e.target.value })}
-                                        />
+                                            onChange={e => {
+                                                const p = positions.find((pos: any) => pos.name === e.target.value);
+                                                setFormData({ ...formData, position: e.target.value, salary: p ? p.baseSalary : formData.salary });
+                                            }}
+                                        >
+                                            <option value="">Seleccionar...</option>
+                                            {positions.map((p: any) => (
+                                                <option key={p.id} value={p.name}>{p.name}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">Fecha Contratación</label>

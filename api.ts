@@ -358,6 +358,12 @@ export const api = {
     return handleResponse(res);
   },
 
+  getSalaryHistory: async (id: string): Promise<import('./types').SalaryHistory[]> => {
+    const res = await fetch(`${API_BASE_URL}/employees/${id}/salary-history`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+
   // Expenses
   getExpenses: async (): Promise<Expense[]> => {
     const res = await fetch(`${API_BASE_URL}/expenses`, { headers: getHeaders() });
@@ -383,5 +389,36 @@ export const api = {
   getExpensesStats: async (month: string): Promise<{ total: number, byCategory: Record<string, number> }> => {
     const res = await fetch(`${API_BASE_URL}/expenses/stats?month=${month}`, { headers: getHeaders() });
     return handleResponse(res);
+  },
+
+  // Positions
+  getPositions: async (): Promise<import('./types').JobPosition[]> => {
+    const res = await fetch(`${API_BASE_URL}/positions`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  createPosition: async (data: Partial<import('./types').JobPosition>): Promise<import('./types').JobPosition> => {
+    const res = await fetch(`${API_BASE_URL}/positions`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  updatePosition: async (id: string, data: Partial<import('./types').JobPosition>): Promise<void> => {
+    await fetch(`${API_BASE_URL}/positions/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+  },
+
+  deletePosition: async (id: string): Promise<void> => {
+    await fetch(`${API_BASE_URL}/positions/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
   }
+
 };

@@ -144,6 +144,12 @@ export interface SalaryHistory {
   employeeId: string;
 }
 
+export interface JobPosition {
+  id: string;
+  name: string;
+  baseSalary: number;
+}
+
 export interface EmployeePayment {
   id: string;
   employeeId: string;

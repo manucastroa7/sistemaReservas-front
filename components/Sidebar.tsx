@@ -78,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, onNewRes, onCon
           {hasAccess('rooms') && <NavItem view="rooms" label="Habitaciones" icon="🧹" />}
           {hasAccess('commissions') && <NavItem view="commissions" label="Comisiones" icon="💰" />}
           {hasAccess('statistics') && <NavItem view="statistics" label="Estadísticas" icon="📈" />}
-          {hasAccess('orders') && <NavItem view="orders" label="Pedidos" icon="🥐" />}
+          {/* {hasAccess('orders') && <NavItem view="orders" label="Pedidos" icon="🥐" />} */}
 
           {(user?.role === 'admin' || user?.role === 'superadmin') && <NavItem view="hr" label="Recursos Humanos" icon="👔" />}
           {(user?.role === 'admin' || user?.role === 'superadmin') && <NavItem view="expenses" label="Gastos / Insumos" icon="💸" />}

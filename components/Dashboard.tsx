@@ -1,8 +1,8 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { Reservation, Room, Guest } from '../types';
 import { format, isSameDay, parseISO, differenceInDays, addDays, startOfDay, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
+import Pagination from './Pagination';
 
 interface DashboardProps {
   reservations: Reservation[];
@@ -11,7 +11,12 @@ interface DashboardProps {
   onEditRes: (id: string) => void;
 }
 
+const ITEMS_PER_PAGE = 5;
+
 const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEditRes }) => {
+  const [occupiedPage, setOccupiedPage] = useState(1);
+  const [arrivalsPage, setArrivalsPage] = useState(1);
+
   const today = startOfDay(new Date());
 
   // helper to get YYYY-MM-DD
@@ -66,6 +71,13 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
     })
     .sort((a, b) => a.checkOut.localeCompare(b.checkOut));
 
+  // Pagination Logic
+  const totalOccupiedPages = Math.ceil(activeReservations.length / ITEMS_PER_PAGE);
+  const paginatedOccupied = activeReservations.slice((occupiedPage - 1) * ITEMS_PER_PAGE, occupiedPage * ITEMS_PER_PAGE);
+
+  const totalArrivalsPages = Math.ceil(upcomingArrivals.length / ITEMS_PER_PAGE);
+  const paginatedArrivals = upcomingArrivals.slice((arrivalsPage - 1) * ITEMS_PER_PAGE, arrivalsPage * ITEMS_PER_PAGE);
+
   const getGuest = (id: string) => guests.find(g => g.id === id);
 
   return (
@@ -98,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
-              {activeReservations.length > 0 ? activeReservations.map(res => {
+              {paginatedOccupied.length > 0 ? paginatedOccupied.map(res => {
                 const g = getGuest(res.guestId);
                 const payStatus = getPaymentStatus(res);
                 return (
@@ -130,23 +142,28 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">No hay habitaciones ocupadas hoy</td></tr>
+                <tr><td colSpan={6} className="p-8 text-center text-slate-400 italic">No hay habitaciones ocupadas hoy</td></tr>
               )}
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={occupiedPage}
+          totalPages={totalOccupiedPages}
+          onPageChange={setOccupiedPage}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Arrivals Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-black overflow-hidden">
-          <div className="px-6 py-4 border-b border-black bg-blue-50/50">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 bg-blue-50/50">
             <h3 className="font-black text-black uppercase text-sm tracking-wide">📅 Próximos Ingresos</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-slate-50 text-black text-[10px] uppercase font-black tracking-wider border-b border-black">
+              <thead className="bg-slate-50 text-black text-[10px] uppercase font-black tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3">Fecha In</th>
                   <th className="px-6 py-3">Pasajero</th>
@@ -155,7 +172,7 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {upcomingArrivals.length > 0 ? upcomingArrivals.map(res => {
+                {paginatedArrivals.length > 0 ? paginatedArrivals.map(res => {
                   const g = getGuest(res.guestId);
                   const payStatus = getPaymentStatus(res);
                   return (
@@ -191,6 +208,11 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={arrivalsPage}
+            totalPages={totalArrivalsPages}
+            onPageChange={setArrivalsPage}
+          />
         </div>
 
         {/* Departures Table */}
