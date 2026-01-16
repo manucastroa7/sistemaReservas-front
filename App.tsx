@@ -31,6 +31,7 @@ const MainApp: React.FC = () => {
   const [selectedResId, setSelectedResId] = useState<string | null>(null);
   const [initialResData, setInitialResData] = useState<{ date: Date; roomId: number; endDate?: Date } | null>(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -118,6 +119,10 @@ const MainApp: React.FC = () => {
     return <SuperAdminDashboard />;
   }
 
+
+
+  // ... (previous useEffect)
+
   if (loading) return (
     <div className="h-screen flex items-center justify-center bg-slate-900 text-white font-black text-xl animate-pulse">
       CONECTANDO AL SERVIDOR...
@@ -131,9 +136,11 @@ const MainApp: React.FC = () => {
         setView={setCurrentView}
         onNewRes={() => { setSelectedResId(null); setInitialResData(null); setIsResModalOpen(true); }}
         onConfigRoles={() => setShowRoleModal(true)}
+        isCollapsed={isSidebarCollapsed}
+        toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
-      <main className="flex-1 overflow-auto relative">
+      <main className={`flex-1 overflow-auto relative ${currentView === 'calendar' ? 'p-0' : 'p-6'}`}>
         <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter">

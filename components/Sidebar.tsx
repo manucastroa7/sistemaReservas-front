@@ -8,9 +8,11 @@ interface SidebarProps {
   setView: (v: ViewType) => void;
   onNewRes: () => void;
   onConfigRoles: () => void;
+  isCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, onNewRes, onConfigRoles }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, onNewRes, onConfigRoles, isCollapsed, toggleSidebar }) => {
   const { user, logout } = useAuth();
 
   const hasAccess = (module: string) => {
@@ -22,36 +24,50 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, onNewRes, onCon
   const NavItem = ({ view, label, icon }: { view: ViewType; label: string; icon: string }) => (
     <button
       onClick={() => setView(view)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentView === view
+      title={isCollapsed ? label : ''}
+      className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl transition-all ${currentView === view
         ? 'bg-blue-600 text-white shadow-lg'
         : 'text-slate-400 hover:bg-slate-800 hover:text-white'
         }`}
     >
       <span className="text-xl">{icon}</span>
-      <span className="font-bold text-xs uppercase tracking-widest">{label}</span>
+      {!isCollapsed && <span className="font-bold text-xs uppercase tracking-widest">{label}</span>}
     </button>
   );
 
   return (
-    <aside className="w-64 bg-slate-900 text-white flex flex-col h-full shadow-2xl overflow-hidden">
+    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-white flex flex-col h-full shadow-2xl overflow-hidden transition-all duration-300 relative`}>
       {/* Header: User Info - Fixed */}
-      <div className="p-6 shrink-0">
-        <div className="flex items-center gap-3 px-2">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-xl font-black text-white">{user?.firstName?.[0] || 'U'}</div>
-          <div className="overflow-hidden">
-            <h2 className="font-black text-sm tracking-tighter leading-none uppercase truncate">{user?.firstName} {user?.lastName}</h2>
-            <p className="text-[10px] font-bold text-blue-400 tracking-[0.2em] uppercase truncate">{user?.role}</p>
+      <div className="p-4 shrink-0 flex flex-col gap-4">
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3 px-2'}`}>
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-xl font-black text-white shrink-0">
+            {user?.firstName?.[0] || 'U'}
           </div>
+          {!isCollapsed && (
+            <div className="overflow-hidden">
+              <h2 className="font-black text-sm tracking-tighter leading-none uppercase truncate">{user?.firstName} {user?.lastName}</h2>
+              <p className="text-[10px] font-bold text-blue-400 tracking-[0.2em] uppercase truncate">{user?.role}</p>
+            </div>
+          )}
         </div>
+
+        <button
+          onClick={toggleSidebar}
+          className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-1 rounded-md self-end transition-colors w-full flex justify-center"
+          title={isCollapsed ? "Expandir" : "Contraer"}
+        >
+          {isCollapsed ? '»' : '«'}
+        </button>
       </div>
 
       {/* Scrollable Content: Reserve Btn + Nav */}
-      <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-8 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-8 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
         <button
           onClick={onNewRes}
-          className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-black py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95 uppercase text-xs tracking-widest shrink-0"
+          title={isCollapsed ? "Nueva Reserva" : ""}
+          className={`w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-black py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95 uppercase text-xs tracking-widest shrink-0 ${isCollapsed ? 'px-0' : 'px-4'}`}
         >
-          RESERVAR
+          {isCollapsed ? <span className="text-xl">+</span> : <><span>RESERVAR</span></>}
         </button>
 
         <nav className="space-y-2">
@@ -70,23 +86,25 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, onNewRes, onCon
           {(user?.role === 'admin' || user?.role === 'superadmin') && (
             <button
               onClick={onConfigRoles}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
+              title={isCollapsed ? "Configuración" : ""}
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all`}
             >
               <span className="text-xl">⚙️</span>
-              <span className="font-bold text-xs uppercase tracking-widest">Configuración</span>
+              {!isCollapsed && <span className="font-bold text-xs uppercase tracking-widest">Configuración</span>}
             </button>
           )}
         </nav>
       </div>
 
       {/* Footer: Logout - Fixed */}
-      <div className="p-6 mt-auto shrink-0 border-t border-slate-800">
+      <div className="p-4 mt-auto shrink-0 border-t border-slate-800">
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-rose-900/50 hover:text-rose-400 transition-colors"
+          title={isCollapsed ? "Cerrar Sesión" : ""}
+          className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-slate-400 hover:bg-rose-900/50 hover:text-rose-400 transition-colors`}
         >
           <span className="text-xl">🚪</span>
-          <span className="font-bold text-xs uppercase tracking-widest">Cerrar Sesión</span>
+          {!isCollapsed && <span className="font-bold text-xs uppercase tracking-widest">Cerrar Sesión</span>}
         </button>
       </div>
     </aside >

@@ -118,8 +118,9 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
-      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+
+    <div className="bg-white shadow-sm border-t border-slate-200 overflow-hidden flex flex-col h-[calc(100vh-65px)]" onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+      <div className="p-2 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
         <div className="flex gap-2">
           <button
             onClick={() => setCurrentDate(subMonths(currentDate, 1))}
@@ -137,16 +138,16 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
             →
           </button>
         </div>
-        <div className="flex items-center gap-4 text-xs font-bold">
-          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-gradient-to-r from-blue-100 via-purple-100 to-pink-100 rounded-sm border border-slate-300"></span> Colores únicos por reserva</div>
-          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-white rounded-sm border-2 border-emerald-500 ring-2 ring-emerald-400 ring-offset-1"></span> Saldado</div>
-          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-white rounded-sm border-2 border-amber-500 ring-2 ring-amber-400 ring-offset-1"></span> Seña/Parcial</div>
-          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-blue-600 rounded-sm"></span> Check-in</div>
-          <div className="flex items-center gap-1"><span className="w-4 h-4 bg-red-600 rounded-sm"></span> Bloqueada</div>
+        <div className="flex items-center gap-4 text-xs font-bold overflow-x-auto">
+          <div className="flex items-center gap-1 shrink-0"><span className="w-4 h-4 bg-gradient-to-r from-blue-100 via-purple-100 to-pink-100 rounded-sm border border-slate-300"></span> Colores únicos</div>
+          <div className="flex items-center gap-1 shrink-0"><span className="w-4 h-4 bg-white rounded-sm border-2 border-emerald-500 ring-2 ring-emerald-400 ring-offset-1"></span> Saldado</div>
+          <div className="flex items-center gap-1 shrink-0"><span className="w-4 h-4 bg-white rounded-sm border-2 border-amber-500 ring-2 ring-amber-400 ring-offset-1"></span> Parcial</div>
+          <div className="flex items-center gap-1 shrink-0"><span className="w-4 h-4 bg-blue-600 rounded-sm"></span> Check-in</div>
+          <div className="flex items-center gap-1 shrink-0"><span className="w-4 h-4 bg-red-600 rounded-sm"></span> Bloqueada</div>
         </div>
       </div>
 
-      <div className="overflow-auto max-h-[75vh] custom-scrollbar">
+      <div className="overflow-auto flex-1 custom-scrollbar relative">
         <table className="w-full border-collapse table-fixed">
           <thead>
             <tr>
