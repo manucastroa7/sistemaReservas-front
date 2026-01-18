@@ -276,7 +276,7 @@ const GuestList: React.FC<GuestListProps> = ({ guests, onAddGuest, onEditRes, on
                                       <td className="px-4 py-3 font-bold text-slate-700">
                                         {r.rooms && r.rooms.length > 0
                                           ? r.rooms.map(rm => rm.id).join(', ')
-                                          : (r.roomIds ? r.roomIds.join(', ') : r.roomId)}
+                                          : (r.roomIds && r.roomIds.length > 0 ? r.roomIds.join(', ') : (r.roomId || '-'))}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${r.status === 'cancelled' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
