@@ -59,6 +59,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     commissionPaid: reservation?.commissionPaid || false,
     notes: reservation?.notes || '',
     status: reservation?.status || 'confirmed',
+    expiresAt: reservation?.expiresAt ? format(parseISO(reservation.expiresAt), 'yyyy-MM-dd HH:mm') : format(addDays(new Date(), 1), 'yyyy-MM-dd HH:mm'), // Default 24h
     pax: reservation?.pax || 1,
   });
 
@@ -377,6 +378,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
         extras: extras,
         notes: formData.notes,
         status: formData.status,
+        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : null,
       };
       onSave(res, guest);
     } else {
@@ -402,7 +404,9 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
         payments: [], // Payments hard to split.
         extras: [],
         notes: formData.notes,
+        notes: formData.notes,
         status: formData.status,
+        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : null,
       }));
 
       // Wrap in special payload
@@ -502,6 +506,44 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
           <TabButton active={activeTab === 'group'} onClick={() => setActiveTab('group')} label="Empresa / Comisión" />
           <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')} label={`Pagos (${displayPayments.length})`} />
           <TabButton active={activeTab === 'extras'} onClick={() => setActiveTab('extras')} label={`Extras (${extras.length})`} />
+        </div>
+
+        {/* NEW: Quotation Toggle Banner */}
+        <div className="bg-slate-100/50 px-8 py-2 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="resType"
+                checked={formData.status !== 'quotation'}
+                onChange={() => setFormData({ ...formData, status: 'confirmed' })}
+                className="w-4 h-4 accent-blue-600"
+              />
+              <span className="text-xs font-black uppercase text-slate-600">Reserva Confirmada</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="resType"
+                checked={formData.status === 'quotation'}
+                onChange={() => setFormData({ ...formData, status: 'quotation' })}
+                className="w-4 h-4 accent-amber-500"
+              />
+              <span className="text-xs font-black uppercase text-amber-600">Presupuesto / Cotización</span>
+            </label>
+          </div>
+
+          {formData.status === 'quotation' && (
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
+              <span className="text-[10px] font-black uppercase text-rose-500">Vence:</span>
+              <input
+                type="datetime-local"
+                value={formData.expiresAt}
+                onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
+                className="text-xs font-bold border border-rose-200 bg-rose-50 rounded px-2 py-1 text-rose-700 outline-none focus:ring-1 focus:ring-rose-400"
+              />
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-8 min-h-0">

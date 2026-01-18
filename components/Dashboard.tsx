@@ -16,6 +16,7 @@ const ITEMS_PER_PAGE = 5;
 const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEditRes }) => {
   const [occupiedPage, setOccupiedPage] = useState(1);
   const [arrivalsPage, setArrivalsPage] = useState(1);
+  const [departuresPage, setDeparturesPage] = useState(1);
 
   const today = startOfDay(new Date());
 
@@ -77,6 +78,9 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
 
   const totalArrivalsPages = Math.ceil(upcomingArrivals.length / ITEMS_PER_PAGE);
   const paginatedArrivals = upcomingArrivals.slice((arrivalsPage - 1) * ITEMS_PER_PAGE, arrivalsPage * ITEMS_PER_PAGE);
+
+  const totalDeparturesPages = Math.ceil(upcomingDepartures.length / ITEMS_PER_PAGE);
+  const paginatedDepartures = upcomingDepartures.slice((departuresPage - 1) * ITEMS_PER_PAGE, departuresPage * ITEMS_PER_PAGE);
 
   const getGuest = (id: string) => guests.find(g => g.id === id);
 
@@ -231,7 +235,7 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {upcomingDepartures.length > 0 ? upcomingDepartures.map(res => {
+                {paginatedDepartures.length > 0 ? paginatedDepartures.map(res => {
                   const g = getGuest(res.guestId);
                   const payStatus = getPaymentStatus(res);
                   return (
@@ -267,6 +271,11 @@ const Dashboard: React.FC<DashboardProps> = ({ reservations, rooms, guests, onEd
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={departuresPage}
+            totalPages={totalDeparturesPages}
+            onPageChange={setDeparturesPage}
+          />
         </div>
 
       </div>

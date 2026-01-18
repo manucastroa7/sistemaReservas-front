@@ -169,6 +169,13 @@ export const api = {
     });
   },
 
+  deleteReservation: async (id: string): Promise<void> => {
+    await fetch(`${API_BASE_URL}/reservations/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+  },
+
   addMaintenanceTask: async (roomId: number, description: string, requestDate?: string): Promise<void> => {
     await fetch(`${API_BASE_URL}/rooms/${roomId}/maintenance`, {
       method: 'POST',

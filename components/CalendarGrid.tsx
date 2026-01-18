@@ -240,6 +240,8 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                             bgColor = 'bg-slate-600 text-white border-slate-700 ring-2 ring-slate-500';
                           } else if (res.status === 'maintenance') {
                             bgColor = 'bg-red-600 text-white border-red-700 font-black tracking-widest ring-2 ring-red-500';
+                          } else if (res.status === 'quotation') {
+                            bgColor = 'bg-amber-100 text-amber-800 border-amber-300 ring-2 ring-amber-400 border-dashed';
                           } else if (totalDiff <= 0) {
                             // Fully paid - add green ring for emphasis
                             bgColor = `${colorScheme.bg} ${colorScheme.text} ${colorScheme.border} ring-2 ring-emerald-500 font-extrabold`;

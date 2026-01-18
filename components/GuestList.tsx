@@ -47,6 +47,19 @@ const GuestList: React.FC<GuestListProps> = ({ guests, onAddGuest, onEditRes, on
     }
   };
 
+  const handleDeleteRes = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (window.confirm('¿Está seguro de eliminar esta reserva cancelada? Esta acción no se puede deshacer.')) {
+        await api.deleteReservation(id);
+        alert('Reserva eliminada.');
+        window.location.reload();
+      }
+    } catch (e: any) {
+      alert('Error al eliminar: ' + e.message);
+    }
+  };
+
   const saveNotes = async (id: string) => {
     await api.updateGuest(id, { observations: notes });
     window.location.reload();
@@ -267,7 +280,10 @@ const GuestList: React.FC<GuestListProps> = ({ guests, onAddGuest, onEditRes, on
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${r.status === 'cancelled' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                          {r.status === 'confirmed' ? 'Confirmada' : r.status}
+                                          {r.status === 'confirmed' ? 'CONFIRMADA' :
+                                            r.status === 'cancelled' ? 'CANCELADA' :
+                                              r.status === 'checked-in' ? 'CHECK-IN' :
+                                                r.status === 'checked-out' ? 'CHECK-OUT' : r.status}
                                         </span>
                                       </td>
                                       <td className="px-4 py-3 text-right font-mono text-slate-600">
@@ -282,13 +298,22 @@ const GuestList: React.FC<GuestListProps> = ({ guests, onAddGuest, onEditRes, on
                                           👁️
                                         </button>
                                         {r.status === 'cancelled' && (
-                                          <button
-                                            onClick={(e) => handleReactivateRes(r.id, e)}
-                                            className="text-emerald-600 hover:text-emerald-800 font-bold text-[10px] uppercase border border-emerald-200 bg-emerald-50 px-2 py-1 rounded"
-                                            title="Reactivar Reserva"
-                                          >
-                                            Reactivar
-                                          </button>
+                                          <div className="flex gap-1 justify-center">
+                                            <button
+                                              onClick={(e) => handleReactivateRes(r.id, e)}
+                                              className="text-emerald-600 hover:text-emerald-800 font-bold text-[10px] uppercase border border-emerald-200 bg-emerald-50 px-2 py-1 rounded"
+                                              title="Reactivar Reserva"
+                                            >
+                                              Reactivar
+                                            </button>
+                                            <button
+                                              onClick={(e) => handleDeleteRes(r.id, e)}
+                                              className="text-rose-600 hover:text-rose-800 font-bold text-[10px] uppercase border border-rose-200 bg-rose-50 px-2 py-1 rounded"
+                                              title="Eliminar Reserva Permanetemente"
+                                            >
+                                              Eliminar
+                                            </button>
+                                          </div>
                                         )}
                                       </td>
                                     </tr>
