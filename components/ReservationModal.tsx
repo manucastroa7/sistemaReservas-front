@@ -259,7 +259,28 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     }
   };
 
-  const handleSavePayment = (payment: Payment) => {
+  const handleSavePayment = async (payment: Payment, targetReservationId?: string) => {
+    // 1. External Payment (Other Group Member)
+    if (targetReservationId && targetReservationId !== reservation?.id) {
+      try {
+        // Fetch current payments of target to append
+        const targetRes = allReservations.find(r => r.id === targetReservationId);
+        if (targetRes) {
+          const newPayments = [...(targetRes.payments || []), payment];
+          await api.updateReservation(targetReservationId, { payments: newPayments });
+          alert('Pago imputado exitosamente a la reserva seleccionada.');
+          // Ideally reload or update "allReservations" to reflect change in UI immediately?
+          // For now, next reload will show it. Or user can check Group Balance.
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error al guardar el pago en la otra reserva.');
+      }
+      setShowPaymentModal(false);
+      return;
+    }
+
+    // 2. Local Payment (Current Reservation)
     if (editingPayment) {
       setPayments(payments.map(p => p.id === payment.id ? payment : p));
       setEditingPayment(undefined);
@@ -399,11 +420,37 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
         await Promise.all(selectedRooms.map(async (room) => {
           const g = processedRoomGuests[room.id];
           // If we have data but no ID, create it. If we have ID, update it.
-          // We require at least Last Name or Name to act.
-          if (g && (g.name || g.lastName || g.dni)) {
+          // We require at least Name to act (even if just name).
+          if (g && (g.name || g.lastName)) {
             if (!g.id) {
-              // Create New Guest
-              const newG = await api.createGuest(g);
+              // Create New Guest Logic
+              // If user only typed "Name Lastname" in the name field, we try to split it
+              let finalName = g.name || '';
+              let finalLastName = g.lastName || '-';
+              let finalDni = g.dni || null; // Send null if empty (Backend allows it now)
+
+              // Smart Split: If no lastName provided but name has spaces, assume "First Last"
+              if ((!g.lastName || g.lastName === '-') && finalName && finalName.includes(' ')) {
+                const parts = finalName.trim().split(' ');
+                if (parts.length > 1) {
+                  // Last part is Last Name, rest is Name
+                  finalLastName = parts.pop() || '-';
+                  finalName = parts.join(' ');
+                }
+              }
+
+              const guestPayload = {
+                ...g,
+                name: finalName,
+                lastName: finalLastName,
+                dni: finalDni,
+                hotelId: reservation?.hotelId || guest.hotelId // Ensure hotel match
+              };
+
+              // Sanitize empty strings to undefined/null for backend
+              if (guestPayload.dni === '') guestPayload.dni = null;
+
+              const newG = await api.createGuest(guestPayload);
               processedRoomGuests[room.id] = newG;
             } else {
               // Update Existing Guest (Simple update)
@@ -563,6 +610,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
           onClose={() => { setShowPaymentModal(false); setEditingPayment(undefined); }}
           onSave={handleSavePayment}
           initialPayment={editingPayment}
+          linkedReservations={linkedReservations}
         />
       )}
 

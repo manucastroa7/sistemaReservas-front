@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
-import { PaymentMethod, Payment } from '../types';
+import { PaymentMethod, Payment, Reservation } from '../types';
 
 interface PaymentModalProps {
     onClose: () => void;
-    onSave: (payment: Payment) => void;
+    onSave: (payment: Payment, targetReservationId?: string) => void;
     initialPayment?: Payment;
+    linkedReservations?: Reservation[];
+    checkInDate?: string;
 }
 
-const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSave, initialPayment }) => {
+const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSave, initialPayment, linkedReservations = [], checkInDate }) => {
     const [data, setData] = useState({
         amount: initialPayment?.amount.toString() || '',
         method: initialPayment?.method || 'Efectivo' as PaymentMethod,
         receipt: initialPayment?.receipt || '',
         date: initialPayment?.date || new Date().toISOString().split('T')[0]
     });
+
+    const [targetResId, setTargetResId] = useState<string>(''); // Empty = Current / Default
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -23,7 +27,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSave, initialPay
             method: data.method,
             date: data.date,
             receipt: data.receipt || 'S/N'
-        });
+        }, targetResId);
         onClose();
     };
 
@@ -32,6 +36,29 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSave, initialPay
             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm m-4 animate-in zoom-in-95 duration-200">
                 <h3 className="text-xl font-black text-slate-800 mb-4 uppercase">Nuevo Pago</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {linkedReservations.length > 0 && (
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imputar Pago A:</label>
+                            <select
+                                className="w-full border-2 border-slate-200 rounded-lg p-2 font-bold text-slate-700 outline-none focus:border-blue-500 text-sm"
+                                value={targetResId}
+                                onChange={e => setTargetResId(e.target.value)}
+                            >
+                                <option value="">Reserva Actual / Coordinador</option>
+                                {linkedReservations.map(r => (
+                                    <option key={r.id} value={r.id}>
+                                        Hab. {r.rooms?.[0]?.id || r.roomId} - {r.guest?.lastName} {r.guest?.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {targetResId && (
+                                <p className="text-[10px] text-amber-600 font-bold mt-1">
+                                    ⚠️ Se guardará directamente en la reserva seleccionada.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monto ($)</label>
                         <input

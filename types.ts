@@ -36,8 +36,8 @@ export interface MaintenanceTask {
 export interface Guest {
   id: string;
   name: string;
-  lastName: string;
-  dni: string;
+  lastName?: string;
+  dni?: string;
   email: string;
   phone: string;
   country?: string;
@@ -99,6 +99,7 @@ export interface Reservation {
   groupId?: string;
   expiresAt?: string;
   pax?: number;
+  guest?: Guest; // Populated relation
 }
 
 export interface User {
