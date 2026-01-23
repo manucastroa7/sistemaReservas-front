@@ -4,6 +4,8 @@ import { api } from './api';
 import { Room, Guest, Reservation, ViewType, RoomStatus } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
+import GroupsPage from './components/GroupsPage';
+import PaymentModal from './components/PaymentModal';
 import CalendarGrid from './components/CalendarGrid';
 import GuestList from './components/GuestList';
 import RoomList from './components/RoomList';
@@ -29,7 +31,7 @@ const MainApp: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isResModalOpen, setIsResModalOpen] = useState(false);
   const [selectedResId, setSelectedResId] = useState<string | null>(null);
-  const [initialResData, setInitialResData] = useState<{ date: Date; roomId: number; endDate?: Date } | null>(null);
+  const [initialResData, setInitialResData] = useState<{ date: Date; roomId?: number; endDate?: Date; isGroup?: boolean } | null>(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -151,6 +153,7 @@ const MainApp: React.FC = () => {
               {currentView === 'rooms' && 'Habitaciones'}
               {currentView === 'commissions' && 'Comisiones'}
               {currentView === 'orders' && 'Pedidos Panadería'}
+              {currentView === 'groups' && 'Gestión de Grupos'}
             </h1>
           </div>
 
@@ -247,13 +250,22 @@ const MainApp: React.FC = () => {
                   });
                   await Promise.all(toCancel.map(r => api.updateReservation(r.id, { status: 'cancelled' })));
                 }
-
-                // Also update room status to dirty if needed
-                await api.updateRoomStatus(roomId, 'dirty');
                 await loadData();
               }}
             />
           )}
+
+          {currentView === 'groups' && (
+            <GroupsPage
+              reservations={reservations}
+              guests={guests}
+              rooms={rooms}
+              onNewGroup={() => { setSelectedResId(null); setInitialResData({ date: new Date(), isGroup: true }); setIsResModalOpen(true); }}
+              onReload={loadData}
+            />
+          )}
+
+
           {currentView === 'commissions' && (
             <CommissionReport
               reservations={reservations}
@@ -281,6 +293,7 @@ const MainApp: React.FC = () => {
           initialDate={initialResData?.date}
           initialRoomId={initialResData?.roomId}
           initialEndDate={initialResData?.endDate}
+          initialIsGroup={initialResData?.isGroup}
         />
       )}
 

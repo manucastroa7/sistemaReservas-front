@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'; // URL de tu NestJS
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3004/api'; // URL de tu NestJS
 
 const decodeJwt = (token: string) => {
     try {

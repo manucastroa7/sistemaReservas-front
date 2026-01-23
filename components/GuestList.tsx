@@ -65,6 +65,18 @@ const GuestList: React.FC<GuestListProps> = ({ guests, onAddGuest, onEditRes, on
     window.location.reload();
   };
 
+  const handleDeleteGuest = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm('¿Está seguro de eliminar este pasajero y todo su historial? Esta acción no se puede deshacer.')) {
+      try {
+        await api.deleteGuest(id);
+        window.location.reload();
+      } catch (error) {
+        alert('Error al eliminar pasajero. Asegúrese de que no tenga reservas activas o complejas.');
+      }
+    }
+  };
+
   const getGuestStatus = (g: Guest) => {
     const totalDebt = (g.reservations || []).reduce((acc, r) => {
       if (r.status === 'cancelled') return acc;
@@ -247,7 +259,15 @@ const GuestList: React.FC<GuestListProps> = ({ guests, onAddGuest, onEditRes, on
                       <button className="py-1.5 px-3 bg-blue-100/50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors mr-2" onClick={(e) => { e.stopPropagation(); handleExpand(guest); }}>
                         {expandedId === guest.id ? 'Cerrar' : 'Ver Detalles'}
                       </button>
-                      {/* Add delete button logic here if needed, keeping simple for pagination focus */}
+                      {(!guest.reservations || guest.reservations.length === 0 || guest.reservations.every(r => r.status === 'cancelled')) && (
+                        <button
+                          className="py-1.5 px-3 bg-rose-100/50 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition-colors"
+                          onClick={(e) => handleDeleteGuest(guest.id, e)}
+                          title="Eliminar Pasajero"
+                        >
+                          Eliminar
+                        </button>
+                      )}
                     </td>
                   </tr>
                   {expandedId === guest.id && (

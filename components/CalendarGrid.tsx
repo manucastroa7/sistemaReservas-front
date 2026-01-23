@@ -253,6 +253,13 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                           const fullName = res.status === 'maintenance' ? `🔧 ${res.notes || 'BLOQUEADA'}` : getGuestName(res.guestId);
                           const displayName = res.status === 'maintenance' ? fullName : fullName.split(',')[0]; // Show only Last Name
 
+                          const isCheckInDay = isSameDay(day, parseISO(res.checkIn));
+                          // Show name ONLY on check-in day, or if it's the first day of the visible month AND the reservation started before?
+                          // User request: "solo el nombre en el primer día de ingreso". Strict.
+
+                          // Also show if it's maintenance (always visible label if block?)
+                          const showLabel = isCheckInDay || res.status === 'maintenance';
+
                           return (
                             <div
                               title={fullName} // Show full name on hover
@@ -261,7 +268,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ rooms, reservations, onResC
                               className={`absolute inset-y-0.5 left-0 right-0 px-1 text-[11px] font-extrabold overflow-hidden whitespace-nowrap transition-all hover:brightness-95 flex items-center shadow-md border-2 ${bgColor}`}
                             >
                               <span className="truncate w-full">
-                                {displayName}
+                                {showLabel ? displayName : ''}
                               </span>
                             </div>
                           );

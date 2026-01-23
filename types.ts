@@ -97,6 +97,7 @@ export interface Reservation {
   notes: string;
   status: 'confirmed' | 'cancelled' | 'checked-in' | 'checked-out' | 'maintenance';
   groupId?: string;
+  expiresAt?: string;
   pax?: number;
 }
 
@@ -167,4 +168,4 @@ export interface Expense {
   supplier?: string;
 }
 
-export type ViewType = 'calendar' | 'guests' | 'rooms' | 'dashboard' | 'commissions' | 'statistics' | 'orders' | 'passenger-db' | 'hr' | 'expenses';
+export type ViewType = 'calendar' | 'guests' | 'rooms' | 'dashboard' | 'commissions' | 'statistics' | 'orders' | 'passenger-db' | 'hr' | 'expenses' | 'groups';

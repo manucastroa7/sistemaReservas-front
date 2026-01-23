@@ -82,6 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, onNewRes, onCon
 
           {(user?.role === 'admin' || user?.role === 'superadmin') && <NavItem view="hr" label="Recursos Humanos" icon="👔" />}
           {(user?.role === 'admin' || user?.role === 'superadmin') && <NavItem view="expenses" label="Gastos / Insumos" icon="💸" />}
+          <NavItem view="groups" label="Grupos" icon="🏢" />
 
           {(user?.role === 'admin' || user?.role === 'superadmin') && (
             <button

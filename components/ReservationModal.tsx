@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Reservation, Guest, Room, Payment, ExtraCharge, EXTRAS_TYPES } from '../types';
-import { format, parseISO, differenceInDays, addDays } from 'date-fns';
+import { format, parseISO, differenceInDays, addDays, addMinutes, addHours } from 'date-fns';
 import PaymentModal from './PaymentModal';
 import { api } from '../api';
 
@@ -14,6 +14,7 @@ interface ReservationModalProps {
   initialDate?: Date;
   initialRoomId?: number;
   initialEndDate?: Date;
+  initialIsGroup?: boolean;
 }
 
 interface RoomSelection {
@@ -24,7 +25,7 @@ interface RoomSelection {
   pax: number;
 }
 
-const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, reservation, rooms, guests, allReservations = [], initialDate, initialRoomId, initialEndDate }) => {
+const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, reservation, rooms, guests, allReservations = [], initialDate, initialRoomId, initialEndDate, initialIsGroup }) => {
   const capitalize = (str: string) => {
     return str.replace(/\b\w/g, l => l.toUpperCase());
   };
@@ -52,23 +53,67 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     lastNight: reservation?.lastNight || (initialEndDate ? format(initialEndDate, 'yyyy-MM-dd') : (initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'))),
     pricePerNight: reservation?.pricePerNight || 0,
     discount: reservation?.discount || 0,
-    isGroup: reservation?.isGroup || false,
+    isGroup: reservation?.isGroup || initialIsGroup || false,
     groupName: reservation?.groupName || '',
     commissionRecipient: reservation?.commissionRecipient || '',
     commissionAmount: reservation?.commissionAmount || 0,
     commissionPaid: reservation?.commissionPaid || false,
     notes: reservation?.notes || '',
+    // State for Group Rooming List (Room ID -> Guest)
+    // We store partial Guest info or just ID? Ideally ID + Name for display.
+    // Let's store: Record<number, Guest | null>
+
+    // Init roomGuests if editing existing group logic... (Complex for now, let's start empty for new groups) 
+
+    // ... (State Definitions) ...
+    // State for Group Rooming List (Room ID -> Guest)
     status: reservation?.status || 'confirmed',
     expiresAt: reservation?.expiresAt ? format(parseISO(reservation.expiresAt), 'yyyy-MM-dd HH:mm') : format(addDays(new Date(), 1), 'yyyy-MM-dd HH:mm'), // Default 24h
     pax: reservation?.pax || 1,
+    // Contact Phone helper
+    contactPhone: '',
   });
+
+  // Extract contact phone from observations if present
+  useEffect(() => {
+    if (reservation?.isGroup && initialGuest?.observations) {
+      try {
+        const obs = JSON.parse(initialGuest.observations);
+        if (obs.contactPhone) {
+          setFormData((prev: any) => ({ ...prev, contactPhone: obs.contactPhone }));
+        }
+      } catch (e) {
+        // Not JSON
+      }
+    }
+  }, [reservation, initialGuest]);
+
+  // State for Group Rooming List (Room ID -> Guest)
+  const [roomGuests, setRoomGuests] = useState<Record<number, Partial<Guest>>>({});
+
+  // Quotation Duration State
+  const [durationVal, setDurationVal] = useState(30);
+  const [durationUnit, setDurationUnit] = useState<'minutes' | 'hours' | 'days'>('minutes');
+
+  // Effect to update expiresAt based on duration
+  useEffect(() => {
+    if (formData.status === 'quotation') {
+      const now = new Date();
+      let expiry = now;
+      if (durationUnit === 'minutes') expiry = addMinutes(now, durationVal);
+      if (durationUnit === 'hours') expiry = addHours(now, durationVal);
+      if (durationUnit === 'days') expiry = addDays(now, durationVal);
+
+      setFormData((prev: any) => ({ ...prev, expiresAt: format(expiry, 'yyyy-MM-dd HH:mm') }));
+    }
+  }, [durationVal, durationUnit, formData.status]);
 
   const [payments, setPayments] = useState<Payment[]>(reservation?.payments || []);
   const [extras, setExtras] = useState<ExtraCharge[]>(reservation?.extras || []);
-  const [activeTab, setActiveTab] = useState<'info' | 'payments' | 'extras' | 'group'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'payments' | 'extras' | 'group' | 'rooming'>('info');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | undefined>(undefined);
-  const [commissionPct, setCommissionPct] = useState(0);
+  // Removed Commission States as requested to be moved to GroupsPage
   const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed');
 
   // Availability State
@@ -153,21 +198,8 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     }));
   }, [selectedRooms]);
 
-  // Sync Commission Amount based on Pct
-  useEffect(() => {
-    // Calculate Total Stay Value manually for mixed dates
-    let totalValue = 0;
-    selectedRooms.forEach(r => {
-      const n = differenceInDays(parseISO(r.lastNight), parseISO(r.checkIn)) + 1;
-      totalValue += (n > 0 ? n : 0) * r.price;
-    });
+  // Commission Logic removed - managed in GroupsPage
 
-    if (commissionPct > 0) {
-      const amount = (totalValue * commissionPct) / 100;
-      setFormData((prev: any) => ({ ...prev, commissionAmount: amount }));
-      setFormData((prev: any) => ({ ...prev, commissionAmount: Math.round(amount) }));
-    }
-  }, [commissionPct, selectedRooms]);
 
   // Real-time Availability Check
   useEffect(() => {
@@ -308,7 +340,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [payments, linkedReservations, isLinkedGroup, reservation]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedRooms.length === 0) {
       if (reservation?.id) {
@@ -349,14 +381,45 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
       dni: formData.dni,
       email: formData.email,
       phone: formData.phone,
+      // Store extra group fields in observations if needed
+      observations: formData.isGroup && formData.contactPhone ? JSON.stringify({ contactPhone: formData.contactPhone }) : undefined
     };
+
+    // Pre-process Room Guests (Create or Update)
+    const processedRoomGuests = { ...roomGuests };
+    try {
+      await Promise.all(selectedRooms.map(async (room) => {
+        const g = processedRoomGuests[room.id];
+        // If we have data but no ID, create it. If we have ID, update it.
+        // We require at least Last Name or Name to act.
+        if (g && (g.name || g.lastName || g.dni)) {
+          if (!g.id) {
+            // Create New Guest
+            const newG = await api.createGuest(g);
+            processedRoomGuests[room.id] = newG;
+          } else {
+            // Update Existing Guest (Simple update)
+            await api.updateGuest(g.id, g);
+            // Ensure we keep the ID in our map
+            processedRoomGuests[room.id] = { ...g, id: g.id };
+          }
+        }
+      }));
+    } catch (error) {
+      console.error("Error saving rooming list guests:", error);
+      alert("Hubo un error al guardar los pasajeros de la nómina. Verifique los datos.");
+      return;
+    }
 
     // Check if we need Bulk Creation (Mixed Dates)
     const first = selectedRooms[0];
     const sameDates = selectedRooms.every(r => r.checkIn === first.checkIn && r.lastNight === first.lastNight);
 
-    if (sameDates || selectedRooms.length === 1) {
-      // Single Reservation Logic (One Entity, Many Rooms)
+    // Force BULK if it is a GROUP (to allow individual guest/rooming list) OR if dates differ
+    const useBulk = !sameDates || (selectedRooms.length > 1 && formData.isGroup);
+
+    if (!useBulk) {
+      // Single Reservation Logic (One Entity, Many Rooms) -> Only for non-group multi-room or single room
       const res: Reservation = {
         id: reservation?.id || '',
         guestId: guest.id,
@@ -378,16 +441,17 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
         extras: extras,
         notes: formData.notes,
         status: formData.status,
-        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : null,
+        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
       };
       onSave(res, guest);
     } else {
       // Bulk Reservation Logic (Array of Entities)
-      const reservations = selectedRooms.map(room => ({
+      // Used for Groups (splitting rooms) or Mixed Dates
+      const reservations = selectedRooms.map((room, idx) => ({
         // If editing existing, we might lose ID mapping if we split? 
         // For now assume new "Group" creation or simple split.
         // If strictly new:
-        guestId: guest.id,
+        guestId: (processedRoomGuests[room.id]?.id) || guest.id, // Use Assigned Guest OR Default to Payer
         roomId: room.id, // Legacy
         roomIds: [room.id], // Single room per entity
         checkIn: room.checkIn,
@@ -395,18 +459,17 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
         checkOut: format(addDays(parseISO(room.lastNight), 1), 'yyyy-MM-dd'),
         pricePerNight: room.price,
         pax: room.pax || 1, // Add Pax per room
-        discount: 0, // Split discount? Complex. Let's assume 0 or handle globally.
+        discount: idx === 0 ? Number(calculatedDiscount) : 0, // Apply global stuff to first only? Or split?
         isGroup: true, // Auto-mark as group
         groupName: formData.groupName || `Grupo ${guest.lastName}`,
         commissionRecipient: formData.commissionRecipient,
-        commissionAmount: 0, // Split?
+        commissionAmount: idx === 0 ? Number(formData.commissionAmount) : 0,
         commissionPaid: formData.commissionPaid,
-        payments: [], // Payments hard to split.
-        extras: [],
-        notes: formData.notes,
+        payments: idx === 0 ? payments : [], // Attach payments to FIRST res to avoid loss or duplication
+        extras: idx === 0 ? extras : [],
         notes: formData.notes,
         status: formData.status,
-        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : null,
+        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
       }));
 
       // Wrap in special payload
@@ -503,9 +566,12 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
 
         <div className="flex bg-slate-50/50 px-8 border-b border-slate-200">
           <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} label="Huésped y Habitación" />
-          <TabButton active={activeTab === 'group'} onClick={() => setActiveTab('group')} label="Empresa / Comisión" />
+
           <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')} label={`Pagos (${displayPayments.length})`} />
           <TabButton active={activeTab === 'extras'} onClick={() => setActiveTab('extras')} label={`Extras (${extras.length})`} />
+          {formData.isGroup && (
+            <TabButton active={activeTab === 'rooming'} onClick={() => setActiveTab('rooming')} label="Nómina (Rooming List)" />
+          )}
         </div>
 
         {/* NEW: Quotation Toggle Banner */}
@@ -534,14 +600,31 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
           </div>
 
           {formData.status === 'quotation' && (
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
-              <span className="text-[10px] font-black uppercase text-rose-500">Vence:</span>
-              <input
-                type="datetime-local"
-                value={formData.expiresAt}
-                onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
-                className="text-xs font-bold border border-rose-200 bg-rose-50 rounded px-2 py-1 text-rose-700 outline-none focus:ring-1 focus:ring-rose-400"
-              />
+            <div className="flex items-center gap-4 animate-in fade-in slide-in-from-right-4 bg-amber-50 px-3 py-1 rounded-lg border border-amber-100">
+              <span className="text-[10px] font-black uppercase text-amber-600">Vencimiento:</span>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={durationVal}
+                  onChange={(e) => setDurationVal(Number(e.target.value))}
+                  className="w-16 text-center text-xs font-bold border border-amber-200 bg-white rounded px-2 py-1 text-slate-700 outline-none focus:ring-1 focus:ring-amber-400"
+                />
+                <select
+                  value={durationUnit}
+                  onChange={(e) => setDurationUnit(e.target.value as any)}
+                  className="text-xs font-bold border border-amber-200 bg-white rounded px-2 py-1 text-slate-700 outline-none focus:ring-1 focus:ring-amber-400"
+                >
+                  <option value="minutes">Minutos</option>
+                  <option value="hours">Horas</option>
+                  <option value="days">Días</option>
+                </select>
+              </div>
+
+              <div className="text-[10px] font-mono text-amber-700 pl-2 border-l border-amber-200">
+                {formData.expiresAt}
+              </div>
             </div>
           )}
         </div>
@@ -549,17 +632,88 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-8 min-h-0">
           {activeTab === 'info' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {/* Group Toggle */}
+              <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xl">
+                    🏢
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-700 text-sm">¿Es una Reserva de Grupo?</h4>
+                    <p className="text-[10px] text-slate-500">Habilita opciones para empresas y nóminas</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={formData.isGroup}
+                    onChange={(e) => setFormData({ ...formData, isGroup: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+
               <section>
                 <div className="flex items-center gap-2 mb-4">
                   <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold">01</span>
-                  <h3 className="font-black text-slate-700 uppercase text-sm tracking-widest">Titular de Reserva</h3>
+                  <h3 className="font-black text-slate-700 uppercase text-sm tracking-widest">{formData.isGroup ? 'Empresa / Responsable del Pago' : 'Titular de Reserva'}</h3>
                 </div>
+                {formData.isGroup && (
+                  <div className="mb-4 bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-800 font-medium">
+                    ℹ️ <strong>Modo Grupo:</strong> Ingrese aquí los datos de quien contrata (Empresa, Club, etc). Luego podrá asignar los pasajeros a cada habitación en la pestaña "Nómina".
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Input label="DNI" placeholder="Buscar por DNI..." value={formData.dni} onChange={(e: any) => setFormData({ ...formData, dni: e.target.value })} required />
-                  <Input label="Nombre" value={formData.name} onChange={(e: any) => setFormData({ ...formData, name: capitalize(e.target.value) })} required />
-                  <Input label="Apellido" value={formData.lastName} onChange={(e: any) => setFormData({ ...formData, lastName: capitalize(e.target.value) })} required />
-                  <Input label="Email" value={formData.email} onChange={(e: any) => setFormData({ ...formData, email: e.target.value })} type="email" />
-                  <Input label="Teléfono" value={formData.phone} onChange={(e: any) => setFormData({ ...formData, phone: e.target.value })} />
+                  {formData.isGroup ? (
+                    <>
+                      <Input
+                        label="Empresa / Organización"
+                        value={formData.lastName}
+                        onChange={(e: any) => setFormData({ ...formData, lastName: capitalize(e.target.value) })}
+                        required
+                        placeholder="Ej: Turismo S.A."
+                      />
+                      <Input
+                        label="CUIT / DNI (Opcional)"
+                        value={formData.dni}
+                        onChange={(e: any) => setFormData({ ...formData, dni: e.target.value })}
+                        placeholder="Para facturación"
+                      />
+                      <Input
+                        label="Nombre Contacto"
+                        value={formData.name}
+                        onChange={(e: any) => setFormData({ ...formData, name: capitalize(e.target.value) })}
+                        required
+                        placeholder="Ej: Juan Pérez"
+                      />
+                      <Input
+                        label="Teléfono Empresa"
+                        value={formData.phone}
+                        onChange={(e: any) => setFormData({ ...formData, phone: e.target.value })}
+                      />
+                      <Input
+                        label="Teléfono Contacto"
+                        value={formData.contactPhone || ''}
+                        onChange={(e: any) => setFormData({ ...formData, contactPhone: e.target.value })}
+                        placeholder="Celular directo"
+                      />
+                      <Input
+                        label="Mail"
+                        value={formData.email}
+                        onChange={(e: any) => setFormData({ ...formData, email: e.target.value })}
+                        type="email"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Input label="DNI" placeholder="Buscar por DNI..." value={formData.dni} onChange={(e: any) => setFormData({ ...formData, dni: e.target.value })} required />
+                      <Input label="Nombre" value={formData.name} onChange={(e: any) => setFormData({ ...formData, name: capitalize(e.target.value) })} required />
+                      <Input label="Apellido" value={formData.lastName} onChange={(e: any) => setFormData({ ...formData, lastName: capitalize(e.target.value) })} required />
+                      <Input label="Email" value={formData.email} onChange={(e: any) => setFormData({ ...formData, email: e.target.value })} type="email" />
+                      <Input label="Teléfono" value={formData.phone} onChange={(e: any) => setFormData({ ...formData, phone: e.target.value })} />
+                    </>
+                  )}
                 </div>
               </section>
 
@@ -740,250 +894,284 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
             </div>
           )}
 
-          {activeTab === 'group' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="p-6 bg-blue-50 rounded-2xl border-2 border-blue-100">
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <input
-                    type="checkbox"
-                    className="w-5 h-5 accent-blue-600"
-                    checked={formData.isGroup}
-                    onChange={(e: any) => setFormData({ ...formData, isGroup: e.target.checked })}
-                  />
-                  <span className="font-black text-blue-900 uppercase text-sm">¿Es una reserva de Grupo o Empresa?</span>
-                </label>
-
-                {formData.isGroup && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-6 border-t border-blue-200">
-                    <Input label="Nombre del Grupo / Empresa" value={formData.groupName} onChange={(e: any) => setFormData({ ...formData, groupName: e.target.value })} />
-                    <Input label="Referente / Comisionista" value={formData.commissionRecipient} onChange={(e: any) => setFormData({ ...formData, commissionRecipient: e.target.value })} />
-
-                    <div className="flex gap-4">
-                      <div className="w-1/3">
-                        <Input
-                          label="% Comisión"
-                          type="number"
-                          placeholder="Ej. 10"
-                          value={commissionPct}
-                          onChange={(e: any) => setCommissionPct(Number(e.target.value))}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <Input
-                          label="Monto Comisión ($)"
-                          type="number"
-                          value={formData.commissionAmount}
-                          onChange={(e: any) => setFormData({ ...formData, commissionAmount: e.target.value })}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <Input
-                          label="Monto Comisión ($)"
-                          type="number"
-                          value={formData.commissionAmount}
-                          onChange={(e: any) => setFormData({ ...formData, commissionAmount: e.target.value })}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Breakdown Section */}
-                    <div className="mt-4 p-4 bg-white/50 rounded-xl border border-blue-200">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Desglose de Cálculo</p>
-                      <div className="flex justify-between items-center text-xs">
-                        <div className="flex flex-col">
-                          <span className="text-slate-500">Valor Total Estadía</span>
-                          <span className="font-bold text-slate-700">
-                            ${selectedRooms.reduce((sum, r) => {
-                              const nights = differenceInDays(parseISO(r.lastNight), parseISO(r.checkIn)) + 1;
-                              return sum + (nights * r.price);
-                            }, 0).toLocaleString()}
-                          </span>
-                        </div>
-                        <span className="text-slate-400">x</span>
-                        <div className="flex flex-col">
-                          <span className="text-slate-500">Comisión</span>
-                          <span className="font-bold text-slate-700">{commissionPct}%</span>
-                        </div>
-                        <span className="text-slate-400">=</span>
-                        <div className="flex flex-col">
-                          <span className="text-slate-500">A Pagar</span>
-                          <span className="font-bold text-blue-600">${Number(formData.commissionAmount).toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-end pb-1">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4"
-                          checked={formData.commissionPaid}
-                          onChange={(e: any) => setFormData({ ...formData, commissionPaid: e.target.checked })}
-                        />
-                        <span className="text-xs font-bold text-slate-600 uppercase">¿Comisión ya pagada?</span>
-                      </label>
-                    </div>
+          {isLinkedGroup && (
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <h4 className="font-black text-slate-800 uppercase text-sm mb-4">Otras Reservas en este Grupo</h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {linkedReservations.map(lr => (
+                  <div key={lr.id} className="text-xs p-2 bg-slate-50 rounded border border-slate-200 flex justify-between">
+                    <span className="font-bold">Hab. {lr.roomIds?.join(', ') || lr.roomId}</span>
+                    <span>${lr.pricePerNight}</span>
                   </div>
-                )}
-
-                {isLinkedGroup && (
-                  <div className="mt-6 pt-6 border-t border-blue-200">
-                    <h4 className="font-black text-blue-900 uppercase text-sm mb-4">Reservas Vinculadas al Grupo</h4>
-                    <div className="space-y-2">
-                      {linkedReservations.map(lr => (
-                        <div key={lr.id} className={`p-3 rounded-lg flex justify-between items-center text-xs ${lr.id === reservation?.id ? 'bg-blue-200 border border-blue-300 ring-2 ring-blue-400' : 'bg-white border border-blue-100'}`}>
-                          <div className="flex gap-4">
-                            <span className="font-bold text-slate-700">Hab. {lr.roomIds ? lr.roomIds.join(', ') : lr.roomId}</span>
-                            <span className="text-slate-500">{format(parseISO(lr.checkIn || '2024-01-01'), 'dd/MM')} - {format(parseISO(lr.lastNight || '2024-01-01'), 'dd/MM')}</span>
-                          </div>
-                          <span className="font-black text-slate-700">${(lr.pricePerNight * (differenceInDays(parseISO(lr.lastNight || '2024-01-01'), parseISO(lr.checkIn || '2024-01-01')) + 1)).toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
           )}
 
-          {activeTab === 'payments' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          {activeTab === 'rooming' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
               <div className="flex justify-between items-center">
-                <h3 className="font-black text-slate-700 uppercase text-sm">Historial de Transacciones</h3>
-                <button type="button" onClick={() => setShowPaymentModal(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-md transition-all">+ NUEVO PAGO</button>
+                <div>
+                  <h3 className="font-black text-slate-700 uppercase text-sm">Nómina de Pasajeros (Rooming List)</h3>
+                  <p className="text-xs text-slate-500 mt-1">Asigne los ocupantes principales de cada habitación para el grupo.</p>
+                </div>
               </div>
-              <div className="border-2 border-slate-100 rounded-2xl overflow-hidden">
+
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-widest">
+                  <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase">
                     <tr>
-                      <th className="px-6 py-3 text-left">Fecha</th>
-                      <th className="px-6 py-3 text-left">Método</th>
-                      <th className="px-6 py-3 text-left">Referencia</th>
-                      <th className="px-6 py-3 text-right">Monto</th>
+                      <th className="px-4 py-3 text-left">Habitación</th>
+                      <th className="px-4 py-3 text-left">Tipo</th>
+                      <th className="px-4 py-3 text-left">Ocupante Asignado</th>
+                      <th className="px-4 py-3 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {displayPayments.map(p => (
-                      <tr key={p.id} className="group hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-bold">{p.date}</td>
-                        <td className="px-6 py-4">
-                          <span className="bg-slate-100 px-2 py-1 rounded text-[10px] font-black uppercase">{p.method}</span>
-                        </td>
-                        <td className="px-6 py-4 text-slate-500 font-mono text-xs">{p.receipt}</td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-3">
-                            <span className="font-black text-emerald-600 text-sm">${p.amount.toLocaleString()}</span>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                type="button"
-                                onClick={() => { setEditingPayment(p); setShowPaymentModal(true); }}
-                                className="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
-                                title="Editar"
-                              >
-                                ✎
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePayment(p.id)}
-                                className="w-6 h-6 flex items-center justify-center bg-rose-100 text-rose-600 rounded hover:bg-rose-200"
-                                title="Eliminar"
-                              >
-                                ×
-                              </button>
+                    {selectedRooms.map((room, idx) => {
+                      const assignedGuest = roomGuests[room.id];
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">
+                            <span className="font-black text-slate-700 bg-slate-100 px-2 py-1 rounded">Hab. {room.id}</span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 text-xs">
+                            {availableRooms.find(r => r.id === room.id)?.type || 'Estándar'}
+                          </td>
+                          <td className="px-4 py-3">
+
+                            <div className="flex flex-col gap-2 relative">
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Apellido"
+                                  className="w-full border border-slate-300 rounded px-2 py-1 text-xs font-bold focus:border-blue-500 outline-none"
+                                  value={assignedGuest?.lastName || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setRoomGuests(prev => ({
+                                      ...prev,
+                                      [room.id]: { ...prev[room.id], lastName: val }
+                                    }));
+                                  }}
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Nombre"
+                                  className="w-full border border-slate-300 rounded px-2 py-1 text-xs font-bold focus:border-blue-500 outline-none"
+                                  value={assignedGuest?.name || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setRoomGuests(prev => ({
+                                      ...prev,
+                                      [room.id]: { ...prev[room.id], name: val }
+                                    }));
+                                  }}
+                                />
+                              </div>
+                              <div className="flex gap-2 relative group/search">
+                                <input
+                                  type="text"
+                                  placeholder="DNI"
+                                  className="w-24 border border-slate-300 rounded px-2 py-1 text-xs font-mono text-slate-600 focus:border-blue-500 outline-none"
+                                  value={assignedGuest?.dni || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setRoomGuests(prev => ({
+                                      ...prev,
+                                      [room.id]: { ...prev[room.id], dni: val }
+                                    }));
+                                  }}
+                                />
+                                {/* Simple Autocomplete Logic on Last Name or DNI */}
+                                {(!assignedGuest?.id && (assignedGuest?.lastName?.length || 0) > 2) && (
+                                  <div className="absolute top-full left-0 w-64 bg-white shadow-xl border border-slate-200 z-10 max-h-40 overflow-y-auto mt-1 rounded-lg">
+                                    {guests.filter(g =>
+                                      g.lastName.toLowerCase().includes((assignedGuest?.lastName || '').toLowerCase()) ||
+                                      g.dni.includes(assignedGuest?.dni || '')
+                                    ).slice(0, 5).map(g => (
+                                      <div
+                                        key={g.id}
+                                        className="p-2 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-50 flex justify-between"
+                                        onClick={() => setRoomGuests(prev => ({ ...prev, [room.id]: g }))}
+                                      >
+                                        <span className="font-bold">{g.lastName}, {g.name}</span>
+                                        <span className="text-slate-400">{g.dni}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {assignedGuest?.id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newGw = { ...roomGuests };
+                                  delete newGw[room.id];
+                                  setRoomGuests(newGw);
+                                }}
+                                className="text-slate-400 hover:text-rose-500 p-1 rounded transition-colors"
+                                title="Limpiar"
+                              >
+                                <span className="text-lg">×</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
+          )
+          }
 
-          {activeTab === 'extras' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="flex gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl items-end">
-                <div className="flex-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Concepto</label>
-                  <select
-                    className="w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-2.5 focus:border-blue-500 outline-none text-sm font-bold"
-                    id="new-extra-concept"
-                    defaultValue={EXTRAS_TYPES[0]}
-                  >
-                    {EXTRAS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+          {
+            activeTab === 'payments' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-black text-slate-700 uppercase text-sm">Historial de Transacciones</h3>
+                  <button type="button" onClick={() => setShowPaymentModal(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-md transition-all">+ NUEVO PAGO</button>
                 </div>
-                <div className="w-32">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Monto</label>
-                  <input type="number" id="new-extra-amount" className="w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-2.5 focus:border-blue-500 outline-none text-sm font-bold" placeholder="0" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const conceptInput = document.getElementById('new-extra-concept') as HTMLSelectElement;
-                    const amountInput = document.getElementById('new-extra-amount') as HTMLInputElement;
-                    const concept = conceptInput.value;
-                    const amount = Number(amountInput.value);
-
-                    if (concept && amount > 0) {
-                      setExtras([...extras, {
-                        id: Math.random().toString(36).substr(2, 9),
-                        concept,
-                        amount,
-                        date: new Date().toISOString().split('T')[0]
-                      }]);
-                      amountInput.value = '';
-                    }
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 transition-all"
-                >
-                  Agregar
-                </button>
-              </div>
-
-              <div className="border-2 border-slate-100 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-widest">
-                    <tr>
-                      <th className="px-6 py-3 text-left">Concepto</th>
-                      <th className="px-6 py-3 text-left">Fecha</th>
-                      <th className="px-6 py-3 text-right">Monto</th>
-                      <th className="px-6 py-3 text-right"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {extras.map(e => (
-                      <tr key={e.id} className="group hover:bg-slate-50">
-                        <td className="px-6 py-4 font-bold text-slate-700">{e.concept}</td>
-                        <td className="px-6 py-4 text-xs font-mono text-slate-500">{e.date}</td>
-                        <td className="px-6 py-4 text-right font-black text-rose-500">+ ${e.amount.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('¿Eliminar este extra?')) {
-                                setExtras(extras.filter(ex => ex.id !== e.id));
-                              }
-                            }}
-                            className="text-slate-300 hover:text-rose-500 transition-colors font-bold text-lg opacity-0 group-hover:opacity-100"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {extras.length === 0 && (
+                <div className="border-2 border-slate-100 rounded-2xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-widest">
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic font-medium">No hay extras cargados</td>
+                        <th className="px-6 py-3 text-left">Fecha</th>
+                        <th className="px-6 py-3 text-left">Método</th>
+                        <th className="px-6 py-3 text-left">Referencia</th>
+                        <th className="px-6 py-3 text-right">Monto</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {displayPayments.map(p => (
+                        <tr key={p.id} className="group hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 font-bold">{p.date}</td>
+                          <td className="px-6 py-4">
+                            <span className="bg-slate-100 px-2 py-1 rounded text-[10px] font-black uppercase">{p.method}</span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-500 font-mono text-xs">{p.receipt}</td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-3">
+                              <span className="font-black text-emerald-600 text-sm">${p.amount.toLocaleString()}</span>
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingPayment(p); setShowPaymentModal(true); }}
+                                  className="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
+                                  title="Editar"
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePayment(p.id)}
+                                  className="w-6 h-6 flex items-center justify-center bg-rose-100 text-rose-600 rounded hover:bg-rose-200"
+                                  title="Eliminar"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
-        </form>
+            )
+          }
+
+          {
+            activeTab === 'extras' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl items-end">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Concepto</label>
+                    <select
+                      className="w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-2.5 focus:border-blue-500 outline-none text-sm font-bold"
+                      id="new-extra-concept"
+                      defaultValue={EXTRAS_TYPES[0]}
+                    >
+                      {EXTRAS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="w-32">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Monto</label>
+                    <input type="number" id="new-extra-amount" className="w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-2.5 focus:border-blue-500 outline-none text-sm font-bold" placeholder="0" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const conceptInput = document.getElementById('new-extra-concept') as HTMLSelectElement;
+                      const amountInput = document.getElementById('new-extra-amount') as HTMLInputElement;
+                      const concept = conceptInput.value;
+                      const amount = Number(amountInput.value);
+
+                      if (concept && amount > 0) {
+                        setExtras([...extras, {
+                          id: Math.random().toString(36).substr(2, 9),
+                          concept,
+                          amount,
+                          date: new Date().toISOString().split('T')[0]
+                        }]);
+                        amountInput.value = '';
+                      }
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 transition-all"
+                  >
+                    Agregar
+                  </button>
+                </div>
+
+                <div className="border-2 border-slate-100 rounded-2xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-widest">
+                      <tr>
+                        <th className="px-6 py-3 text-left">Concepto</th>
+                        <th className="px-6 py-3 text-left">Fecha</th>
+                        <th className="px-6 py-3 text-right">Monto</th>
+                        <th className="px-6 py-3 text-right"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {extras.map(e => (
+                        <tr key={e.id} className="group hover:bg-slate-50">
+                          <td className="px-6 py-4 font-bold text-slate-700">{e.concept}</td>
+                          <td className="px-6 py-4 text-xs font-mono text-slate-500">{e.date}</td>
+                          <td className="px-6 py-4 text-right font-black text-rose-500">+ ${e.amount.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm('¿Eliminar este extra?')) {
+                                  setExtras(extras.filter(ex => ex.id !== e.id));
+                                }
+                              }}
+                              className="text-slate-300 hover:text-rose-500 transition-colors font-bold text-lg opacity-0 group-hover:opacity-100"
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {extras.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic font-medium">No hay extras cargados</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          }
+        </form >
 
         <div className="px-8 py-6 bg-slate-900 text-white flex flex-col md:flex-row justify-between items-center gap-6 flex-shrink-0">
           <div className="flex gap-4 md:gap-8">
@@ -1043,8 +1231,8 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 
