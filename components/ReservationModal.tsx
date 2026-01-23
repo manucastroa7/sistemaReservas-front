@@ -6,7 +6,7 @@ import { api } from '../api';
 
 interface ReservationModalProps {
   onClose: () => void;
-  onSave: (res: Reservation, guest: Guest) => void;
+  onSave: (res: Reservation, guest: Guest) => Promise<void>;
   reservation?: Reservation;
   rooms: Room[];
   guests: Guest[];
@@ -340,8 +340,13 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [payments, linkedReservations, isLinkedGroup, reservation]);
 
+  // Saving Loading State
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return; // Prevent double submit
+
     if (selectedRooms.length === 0) {
       if (reservation?.id) {
         if (window.confirm('No has seleccionado ninguna habitación. ¿Deseas CANCELAR esta reserva completa?')) {
@@ -385,95 +390,105 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
       observations: formData.isGroup && formData.contactPhone ? JSON.stringify({ contactPhone: formData.contactPhone }) : undefined
     };
 
-    // Pre-process Room Guests (Create or Update)
-    const processedRoomGuests = { ...roomGuests };
+    setIsSaving(true); // START LOADING
+
     try {
-      await Promise.all(selectedRooms.map(async (room) => {
-        const g = processedRoomGuests[room.id];
-        // If we have data but no ID, create it. If we have ID, update it.
-        // We require at least Last Name or Name to act.
-        if (g && (g.name || g.lastName || g.dni)) {
-          if (!g.id) {
-            // Create New Guest
-            const newG = await api.createGuest(g);
-            processedRoomGuests[room.id] = newG;
-          } else {
-            // Update Existing Guest (Simple update)
-            await api.updateGuest(g.id, g);
-            // Ensure we keep the ID in our map
-            processedRoomGuests[room.id] = { ...g, id: g.id };
+      // Pre-process Room Guests (Create or Update)
+      const processedRoomGuests = { ...roomGuests };
+      try {
+        await Promise.all(selectedRooms.map(async (room) => {
+          const g = processedRoomGuests[room.id];
+          // If we have data but no ID, create it. If we have ID, update it.
+          // We require at least Last Name or Name to act.
+          if (g && (g.name || g.lastName || g.dni)) {
+            if (!g.id) {
+              // Create New Guest
+              const newG = await api.createGuest(g);
+              processedRoomGuests[room.id] = newG;
+            } else {
+              // Update Existing Guest (Simple update)
+              await api.updateGuest(g.id, g);
+              // Ensure we keep the ID in our map
+              processedRoomGuests[room.id] = { ...g, id: g.id };
+            }
           }
-        }
-      }));
-    } catch (error) {
-      console.error("Error saving rooming list guests:", error);
-      alert("Hubo un error al guardar los pasajeros de la nómina. Verifique los datos.");
-      return;
-    }
+        }));
+      } catch (error) {
+        console.error("Error saving rooming list guests:", error);
+        alert("Hubo un error al guardar los pasajeros de la nómina. Verifique los datos.");
+        setIsSaving(false);
+        return;
+      }
 
-    // Check if we need Bulk Creation (Mixed Dates)
-    const first = selectedRooms[0];
-    const sameDates = selectedRooms.every(r => r.checkIn === first.checkIn && r.lastNight === first.lastNight);
+      // Check if we need Bulk Creation (Mixed Dates)
+      const first = selectedRooms[0];
+      const sameDates = selectedRooms.every(r => r.checkIn === first.checkIn && r.lastNight === first.lastNight);
 
-    // Force BULK if it is a GROUP (to allow individual guest/rooming list) OR if dates differ
-    const useBulk = !sameDates || (selectedRooms.length > 1 && formData.isGroup);
+      // Force BULK if it is a GROUP (to allow individual guest/rooming list) OR if dates differ
+      const useBulk = !sameDates || (selectedRooms.length > 1 && formData.isGroup);
 
-    if (!useBulk) {
-      // Single Reservation Logic (One Entity, Many Rooms) -> Only for non-group multi-room or single room
-      const res: Reservation = {
-        id: reservation?.id || '',
-        guestId: guest.id,
-        roomId: formData.roomIds[0],
-        roomIds: formData.roomIds,
-        checkIn: first.checkIn,
-        lastNight: first.lastNight,
-        checkOut: format(addDays(parseISO(first.lastNight), 1), 'yyyy-MM-dd'),
-        // Total price per night is sum of all rooms
-        pricePerNight: selectedRooms.reduce((sum, r) => sum + r.price, 0),
-        pax: formData.pax, // Add Pax
-        discount: Number(calculatedDiscount),
-        isGroup: formData.isGroup,
-        groupName: formData.groupName,
-        commissionRecipient: formData.commissionRecipient,
-        commissionAmount: Number(formData.commissionAmount),
-        commissionPaid: formData.commissionPaid,
-        payments: payments,
-        extras: extras,
-        notes: formData.notes,
-        status: formData.status,
-        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
-      };
-      onSave(res, guest);
-    } else {
-      // Bulk Reservation Logic (Array of Entities)
-      // Used for Groups (splitting rooms) or Mixed Dates
-      const reservations = selectedRooms.map((room, idx) => ({
-        // If editing existing, we might lose ID mapping if we split? 
-        // For now assume new "Group" creation or simple split.
-        // If strictly new:
-        guestId: (processedRoomGuests[room.id]?.id) || guest.id, // Use Assigned Guest OR Default to Payer
-        roomId: room.id, // Legacy
-        roomIds: [room.id], // Single room per entity
-        checkIn: room.checkIn,
-        lastNight: room.lastNight,
-        checkOut: format(addDays(parseISO(room.lastNight), 1), 'yyyy-MM-dd'),
-        pricePerNight: room.price,
-        pax: room.pax || 1, // Add Pax per room
-        discount: idx === 0 ? Number(calculatedDiscount) : 0, // Apply global stuff to first only? Or split?
-        isGroup: true, // Auto-mark as group
-        groupName: formData.groupName || `Grupo ${guest.lastName}`,
-        commissionRecipient: formData.commissionRecipient,
-        commissionAmount: idx === 0 ? Number(formData.commissionAmount) : 0,
-        commissionPaid: formData.commissionPaid,
-        payments: idx === 0 ? payments : [], // Attach payments to FIRST res to avoid loss or duplication
-        extras: idx === 0 ? extras : [],
-        notes: formData.notes,
-        status: formData.status,
-        expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
-      }));
+      if (!useBulk) {
+        // Single Reservation Logic (One Entity, Many Rooms) -> Only for non-group multi-room or single room
+        const res: Reservation = {
+          id: reservation?.id || '',
+          guestId: guest.id,
+          roomId: formData.roomIds[0],
+          roomIds: formData.roomIds,
+          checkIn: first.checkIn,
+          lastNight: first.lastNight,
+          checkOut: format(addDays(parseISO(first.lastNight), 1), 'yyyy-MM-dd'),
+          // Total price per night is sum of all rooms
+          pricePerNight: selectedRooms.reduce((sum, r) => sum + r.price, 0),
+          pax: formData.pax, // Add Pax
+          discount: Number(calculatedDiscount),
+          isGroup: formData.isGroup,
+          groupName: formData.groupName,
+          commissionRecipient: formData.commissionRecipient,
+          commissionAmount: Number(formData.commissionAmount),
+          commissionPaid: formData.commissionPaid,
+          payments: payments,
+          extras: extras,
+          notes: formData.notes,
+          status: formData.status,
+          expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
+        };
+        await onSave(res, guest); // AWAIT HERE
+      } else {
+        // Bulk Reservation Logic (Array of Entities)
+        // Used for Groups (splitting rooms) or Mixed Dates
+        const reservations = selectedRooms.map((room, idx) => ({
+          // If editing existing, we might lose ID mapping if we split? 
+          // For now assume new "Group" creation or simple split.
+          // If strictly new:
+          guestId: (processedRoomGuests[room.id]?.id) || guest.id, // Use Assigned Guest OR Default to Payer
+          roomId: room.id, // Legacy
+          roomIds: [room.id], // Single room per entity
+          checkIn: room.checkIn,
+          lastNight: room.lastNight,
+          checkOut: format(addDays(parseISO(room.lastNight), 1), 'yyyy-MM-dd'),
+          pricePerNight: room.price,
+          pax: room.pax || 1, // Add Pax per room
+          discount: idx === 0 ? Number(calculatedDiscount) : 0, // Apply global stuff to first only? Or split?
+          isGroup: true, // Auto-mark as group
+          groupName: formData.groupName || `Grupo ${guest.lastName}`,
+          commissionRecipient: formData.commissionRecipient,
+          commissionAmount: idx === 0 ? Number(formData.commissionAmount) : 0,
+          commissionPaid: formData.commissionPaid,
+          payments: idx === 0 ? payments : [], // Attach payments to FIRST res to avoid loss or duplication
+          extras: idx === 0 ? extras : [],
+          notes: formData.notes,
+          status: formData.status,
+          expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
+        }));
 
-      // Wrap in special payload
-      onSave({ reservations } as any, guest);
+        // Wrap in special payload
+        await onSave({ reservations } as any, guest); // AWAIT HERE
+      }
+    } catch (e) {
+      console.error("Error saving reservation:", e);
+      // We rely on parent to alert, but we must stop loading
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -810,6 +825,22 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
                                   const newRooms = [...selectedRooms];
                                   newRooms[index].price = newPrice;
                                   setSelectedRooms(newRooms);
+                                }}
+                              />
+                            </div>
+
+                            {/* Guest Name Assignment */}
+                            <div className="flex-1 min-w-[150px]">
+                              <Input
+                                label="Titular / Pasajero"
+                                placeholder="Nombre (Opcional)"
+                                value={roomGuests[sr.id]?.name || ''}
+                                onChange={(e: any) => {
+                                  const val = e.target.value;
+                                  setRoomGuests(prev => ({
+                                    ...prev,
+                                    [sr.id]: { ...prev[sr.id], name: val }
+                                  }));
                                 }}
                               />
                             </div>
@@ -1225,9 +1256,18 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
             <button type="button" onClick={onClose} className="px-6 py-3 rounded-xl font-black text-xs hover:bg-slate-800 transition-colors uppercase tracking-widest">Cerrar</button>
             <button
               onClick={handleSubmit}
-              className="px-10 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-black text-xs transition-all shadow-xl shadow-blue-900/20 uppercase tracking-widest"
+              disabled={isSaving}
+              className={`px-10 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-black text-xs transition-all shadow-xl shadow-blue-900/20 uppercase tracking-widest flex items-center gap-2 ${isSaving ? 'opacity-70 cursor-wait' : ''}`}
             >
-              Guardar Reserva
+              {isSaving ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  GUARDANDO...
+                </>
+              ) : 'GUARDAR RESERVA'}
             </button>
           </div>
         </div>
