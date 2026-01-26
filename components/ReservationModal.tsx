@@ -74,8 +74,36 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     expiresAt: reservation?.expiresAt ? format(parseISO(reservation.expiresAt), 'yyyy-MM-dd HH:mm') : format(addDays(new Date(), 1), 'yyyy-MM-dd HH:mm'), // Default 24h
     pax: reservation?.pax || 1,
     // Contact Phone helper
-    contactPhone: '',
+    contactPhone: '', // Add contactPhone to state
   });
+
+  // Calculate Active Groups for Dropdown
+  const activeGroups = React.useMemo(() => {
+    if (!allReservations) return [];
+    const uniqueGroups = new Map();
+    const now = new Date();
+
+    allReservations.forEach(r => {
+      if (r.isGroup && r.groupId && r.groupName && r.status !== 'cancelled') { // Filter cancelled
+        // Optional: Filter by date? Only future or recent groups?
+        // For now, list all.
+        if (!uniqueGroups.has(r.groupId)) {
+          uniqueGroups.set(r.groupId, { id: r.groupId, name: r.groupName });
+        }
+      }
+    });
+    return Array.from(uniqueGroups.values());
+  }, [allReservations]);
+
+  // Mode for Group Selection: 'new' or 'existing'
+  const [groupMode, setGroupMode] = useState<'new' | 'existing'>('new');
+
+  // Effect: If initialGroupId is provided, set mode to existing
+  useEffect(() => {
+    if (initialGroupId) {
+      setGroupMode('existing');
+    }
+  }, [initialGroupId]);
 
   // Pre-fill Group Name if adding to existing group
   useEffect(() => {
@@ -269,7 +297,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
       await Promise.all(selectedRooms.map(async (sr, index) => {
         if (sr.id && sr.checkIn && sr.lastNight) {
           // Check backend
-          const available = await api.checkAvailability(sr.id, sr.checkIn, sr.lastNight, reservation?.id);
+          const available = await api.checkAvailability(sr.id, sr.checkIn, sr.lastNight, sr.reservationId || reservation?.id);
           if (!available) {
             newMap[index] = true;
           }
@@ -819,21 +847,66 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {formData.isGroup ? (
                     <>
+                      {/* Group Selection Mode Toggle */}
+                      <div className="col-span-1 md:col-span-3 flex gap-4 mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="groupMode"
+                            checked={groupMode === 'new'}
+                            onChange={() => { setGroupMode('new'); setFormData({ ...formData, groupId: '', groupName: '' }); }}
+                            className="w-4 h-4 accent-blue-600"
+                          />
+                          <span className="text-xs font-bold text-slate-700">Nuevo Grupo</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="groupMode"
+                            checked={groupMode === 'existing'}
+                            onChange={() => setGroupMode('existing')}
+                            className="w-4 h-4 accent-blue-600"
+                          />
+                          <span className="text-xs font-bold text-slate-700">Unirse a Grupo Existente</span>
+                        </label>
+                      </div>
+
+                      {groupMode === 'existing' ? (
+                        <div className="col-span-1 md:col-span-3">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">Seleccionar Grupo</label>
+                          <select
+                            className="w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-2.5 focus:border-blue-500 outline-none text-sm font-bold"
+                            value={formData.groupId || ''}
+                            onChange={(e) => {
+                              const gId = e.target.value;
+                              const g = activeGroups.find(x => x.id === gId);
+                              if (g) {
+                                setFormData((prev: any) => ({
+                                  ...prev,
+                                  groupId: g.id,
+                                  groupName: g.name
+                                }));
+                              }
+                            }}
+                          >
+                            <option value="">-- Seleccione un Grupo --</option>
+                            {activeGroups.map(g => (
+                              <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <Input
+                          label="Empresa / Organización (Nombre del Grupo)"
+                          value={formData.groupName}
+                          onChange={(e: any) => setFormData({ ...formData, groupName: capitalize(e.target.value) })}
+                          required
+                          placeholder="Ej: Turismo S.A."
+                        />
+                      )}
+
                       <Input
-                        label="Empresa / Organización"
-                        value={formData.lastName}
-                        onChange={(e: any) => setFormData({ ...formData, lastName: capitalize(e.target.value) })}
-                        required
-                        placeholder="Ej: Turismo S.A."
-                      />
-                      <Input
-                        label="CUIT / DNI (Opcional)"
-                        value={formData.dni}
-                        onChange={(e: any) => setFormData({ ...formData, dni: e.target.value })}
-                        placeholder="Para facturación"
-                      />
-                      <Input
-                        label="Nombre Contacto"
+                        label="Nombre Contacto (Titular Habitación)"
                         value={formData.name}
                         onChange={(e: any) => setFormData({ ...formData, name: capitalize(e.target.value) })}
                         required
