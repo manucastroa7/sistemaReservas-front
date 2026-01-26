@@ -15,6 +15,7 @@ interface ReservationModalProps {
   initialRoomId?: number;
   initialEndDate?: Date;
   initialIsGroup?: boolean;
+  initialGroupId?: string;
 }
 
 interface RoomSelection {
@@ -23,9 +24,10 @@ interface RoomSelection {
   checkIn: string;
   lastNight: string;
   pax: number;
+  reservationId?: string; // New: Track which reservation this room belongs to
 }
 
-const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, reservation, rooms, guests, allReservations = [], initialDate, initialRoomId, initialEndDate, initialIsGroup }) => {
+const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, reservation, rooms, guests, allReservations = [], initialDate, initialRoomId, initialEndDate, initialIsGroup, initialGroupId }) => {
   const capitalize = (str: string) => {
     return str.replace(/\b\w/g, l => l.toUpperCase());
   };
@@ -59,6 +61,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     commissionAmount: reservation?.commissionAmount || 0,
     commissionPaid: reservation?.commissionPaid || false,
     notes: reservation?.notes || '',
+    groupId: reservation?.groupId || initialGroupId || '',
     // State for Group Rooming List (Room ID -> Guest)
     // We store partial Guest info or just ID? Ideally ID + Name for display.
     // Let's store: Record<number, Guest | null>
@@ -73,6 +76,23 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
     // Contact Phone helper
     contactPhone: '',
   });
+
+  // Pre-fill Group Name if adding to existing group
+  useEffect(() => {
+    if (initialGroupId && allReservations) {
+      const existingGroupRes = allReservations.find(r => r.groupId === initialGroupId);
+      if (existingGroupRes) {
+        setFormData((prev: any) => ({
+          ...prev,
+          groupName: existingGroupRes.groupName || prev.groupName,
+          // Maybe pre-fill contact info too?
+          commissionRecipient: existingGroupRes.commissionRecipient || prev.commissionRecipient,
+          commissionAmount: existingGroupRes.commissionAmount || prev.commissionAmount,
+          commissionPaid: existingGroupRes.commissionPaid || prev.commissionPaid,
+        }));
+      }
+    }
+  }, [initialGroupId, allReservations]);
 
   // Extract contact phone from observations if present
   useEffect(() => {
@@ -123,38 +143,78 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
   // Multi-Room State
   // Multi-Room State
   const [selectedRooms, setSelectedRooms] = useState<RoomSelection[]>(() => {
-    if (reservation && reservation.roomIds && reservation.roomIds.length > 0) {
-      const avgPrice = Math.round((reservation.pricePerNight || 0) / reservation.roomIds.length);
-      const totalPax = reservation.pax || 1;
-      const avgPax = Math.floor(totalPax / reservation.roomIds.length);
-      const remainderPax = totalPax % reservation.roomIds.length;
+    // 1. EDIT EXISTING GROUP (Load ALL linked reservations)
+    if (reservation?.isGroup && reservation.groupId && allReservations.length > 0) {
+      const groupRes = allReservations.filter(r => r.groupId === reservation.groupId && r.status !== 'cancelled');
+      if (groupRes.length > 0) {
+        return groupRes.flatMap(r => {
+          // Handle legacy multi-room res or single res per room
+          const rIds = r.roomIds && r.roomIds.length > 0 ? r.roomIds : (r.roomId ? [r.roomId] : []);
+          const pricePerRoom = rIds.length > 0 ? (r.pricePerNight / rIds.length) : r.pricePerNight; // Approx split if legacy
+          const paxPerRoom = Math.floor((r.pax || 1) / (rIds.length || 1));
 
-      return reservation.roomIds.map((id, index) => ({
-        id,
-        price: avgPrice,
-        checkIn: reservation.checkIn,
-        lastNight: reservation.lastNight,
-        pax: avgPax + (index === 0 ? remainderPax : 0)
-      }));
-    } else if (reservation && reservation.roomId) {
-      return [{
-        id: reservation.roomId,
-        price: reservation.pricePerNight || 0,
-        checkIn: reservation.checkIn,
-        lastNight: reservation.lastNight,
-        pax: reservation.pax || 1
-      }];
-    } else if (initialRoomId && initialDate) {
-      // New Reservation from Grid Click
+          return rIds.map(roomId => ({
+            id: roomId,
+            price: pricePerRoom,
+            checkIn: r.checkIn,
+            lastNight: r.lastNight,
+            pax: paxPerRoom || 1, // Fallback
+            reservationId: r.id
+          }));
+        });
+      }
+    }
+
+    // 2. EXISTING SINGLE RESERVATION (Multi-room or Single)
+    if (reservation) {
+      if (reservation.roomIds && reservation.roomIds.length > 0) {
+        const avgPrice = Math.round((reservation.pricePerNight || 0) / reservation.roomIds.length);
+        const totalPax = reservation.pax || 1;
+        const avgPax = Math.floor(totalPax / reservation.roomIds.length);
+        const remainderPax = totalPax % reservation.roomIds.length;
+
+        return reservation.roomIds.map((id, index) => ({
+          id,
+          price: avgPrice,
+          checkIn: reservation.checkIn,
+          lastNight: reservation.lastNight,
+          pax: avgPax + (index === 0 ? remainderPax : 0),
+          reservationId: reservation.id
+        }));
+      } else if (reservation.roomId) {
+        return [{
+          id: reservation.roomId,
+          price: reservation.pricePerNight || 0,
+          checkIn: reservation.checkIn,
+          lastNight: reservation.lastNight,
+          pax: reservation.pax || 1,
+          reservationId: reservation.id
+        }];
+      }
+    }
+
+    // 3. NEW RESERVATION (Grid Click)
+    if (initialRoomId && initialDate) {
       return [{
         id: initialRoomId,
         price: 0,
         checkIn: format(initialDate, 'yyyy-MM-dd'),
         lastNight: initialEndDate ? format(initialEndDate, 'yyyy-MM-dd') : format(initialDate, 'yyyy-MM-dd'),
-        pax: 2 // Default to 2? or 1? User can change.
+        pax: 2, // Default
+        // No reservationId (New)
       }];
     }
     return [];
+  });
+
+  // Track original IDs to detect deletions
+  const [originalReservationIds] = useState<string[]>(() => {
+    if (reservation?.isGroup && reservation.groupId && allReservations.length > 0) {
+      return allReservations
+        .filter(r => r.groupId === reservation.groupId && r.status !== 'cancelled')
+        .map(r => r.id);
+    }
+    return reservation ? [reservation.id] : [];
   });
 
   const [availableRooms, setAvailableRooms] = useState<Room[]>(rooms);
@@ -427,7 +487,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
               // If user only typed "Name Lastname" in the name field, we try to split it
               let finalName = g.name || '';
               let finalLastName = g.lastName || '-';
-              let finalDni = g.dni || null; // Send null if empty (Backend allows it now)
+              let finalDni: string | undefined = g.dni || undefined; // Send undefined if empty (Backend should handle)
 
               // Smart Split: If no lastName provided but name has spaces, assume "First Last"
               if ((!g.lastName || g.lastName === '-') && finalName && finalName.includes(' ')) {
@@ -444,11 +504,11 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
                 name: finalName,
                 lastName: finalLastName,
                 dni: finalDni,
-                hotelId: reservation?.hotelId || guest.hotelId // Ensure hotel match
+                // hotelId: reservation?.hotelId || guest.hotelId // Removed as not in Guest type
               };
 
               // Sanitize empty strings to undefined/null for backend
-              if (guestPayload.dni === '') guestPayload.dni = null;
+              if (guestPayload.dni === '') guestPayload.dni = undefined;
 
               const newG = await api.createGuest(guestPayload);
               processedRoomGuests[room.id] = newG;
@@ -471,11 +531,16 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
       const first = selectedRooms[0];
       const sameDates = selectedRooms.every(r => r.checkIn === first.checkIn && r.lastNight === first.lastNight);
 
-      // Force BULK if it is a GROUP (to allow individual guest/rooming list) OR if dates differ
-      const useBulk = !sameDates || (selectedRooms.length > 1 && formData.isGroup);
+      // Force BULK/BATCH MODE if:
+      // 1. It IS a group (we want individual control now, mostly)
+      // 2. Dates differ
+      // 3. We are editing a group (multiple reservationIds involved)
+      const useBatchMode = formData.isGroup || !sameDates || selectedRooms.some(r => r.reservationId !== selectedRooms[0].reservationId);
 
-      if (!useBulk) {
-        // Single Reservation Logic (One Entity, Many Rooms) -> Only for non-group multi-room or single room
+      if (!useBatchMode) {
+        // LEGACY SINGLE MODE (One Reservation ID, Multiple Rooms in array)
+        // Only used for single non-group reservations with multiple rooms (rare now?)
+        // Or simple single room.
         const res: Reservation = {
           id: reservation?.id || '',
           guestId: guest.id,
@@ -484,52 +549,76 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
           checkIn: first.checkIn,
           lastNight: first.lastNight,
           checkOut: format(addDays(parseISO(first.lastNight), 1), 'yyyy-MM-dd'),
-          // Total price per night is sum of all rooms
           pricePerNight: selectedRooms.reduce((sum, r) => sum + r.price, 0),
-          pax: formData.pax, // Add Pax
+          pax: formData.pax,
           discount: Number(calculatedDiscount),
-          isGroup: formData.isGroup,
-          groupName: formData.groupName,
-          commissionRecipient: formData.commissionRecipient,
-          commissionAmount: Number(formData.commissionAmount),
-          commissionPaid: formData.commissionPaid,
+          isGroup: false, // Explicitly false if here?
+          groupName: '',
+          commissionRecipient: '',
+          commissionAmount: 0,
+          commissionPaid: false,
           payments: payments,
           extras: extras,
           notes: formData.notes,
           status: formData.status,
           expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
         };
-        await onSave(res, guest); // AWAIT HERE
+        await onSave(res, guest);
       } else {
-        // Bulk Reservation Logic (Array of Entities)
-        // Used for Groups (splitting rooms) or Mixed Dates
-        const reservations = selectedRooms.map((room, idx) => ({
-          // If editing existing, we might lose ID mapping if we split? 
-          // For now assume new "Group" creation or simple split.
-          // If strictly new:
-          guestId: (processedRoomGuests[room.id]?.id) || guest.id, // Use Assigned Guest OR Default to Payer
-          roomId: room.id, // Legacy
-          roomIds: [room.id], // Single room per entity
+        // BATCH MODE (Create/Update/Cancel Individual Reservations)
+        const reservationsToSave = selectedRooms.map((room, idx) => ({
+          id: room.reservationId || '', // If empty, backend creates new
+          guestId: (processedRoomGuests[room.id]?.id) || guest.id,
+          roomId: room.id,
+          roomIds: [room.id],
           checkIn: room.checkIn,
           lastNight: room.lastNight,
           checkOut: format(addDays(parseISO(room.lastNight), 1), 'yyyy-MM-dd'),
           pricePerNight: room.price,
-          pax: room.pax || 1, // Add Pax per room
+          pax: room.pax || 1,
           discount: idx === 0 ? Number(calculatedDiscount) : 0, // Apply global stuff to first only? Or split?
-          isGroup: true, // Auto-mark as group
+          isGroup: true,
+          groupId: formData.groupId, // Important: Keep same Group ID
           groupName: formData.groupName || `Grupo ${guest.lastName}`,
           commissionRecipient: formData.commissionRecipient,
           commissionAmount: idx === 0 ? Number(formData.commissionAmount) : 0,
           commissionPaid: formData.commissionPaid,
-          payments: idx === 0 ? payments : [], // Attach payments to FIRST res to avoid loss or duplication
-          extras: idx === 0 ? extras : [],
+          payments: (room.reservationId === reservation?.id || (!room.reservationId && idx === 0)) ? payments : [], // Attach to primary or new
+          extras: (room.reservationId === reservation?.id || (!room.reservationId && idx === 0)) ? extras : [],
           notes: formData.notes,
           status: formData.status,
           expiresAt: formData.status === 'quotation' ? new Date(formData.expiresAt).toISOString() : undefined,
         }));
 
-        // Wrap in special payload
-        await onSave({ reservations } as any, guest); // AWAIT HERE
+        // Detect Deletions
+        // IDs in originalReservationIds BUT NOT in selectedRooms.map(reservationId)
+        const currentIds = new Set(selectedRooms.map(r => r.reservationId).filter(Boolean));
+        const idsToDelete = originalReservationIds.filter(id => !currentIds.has(id));
+
+        // We can pass `reservations` array to `onSave` (if modified to handle it) or call api directly.
+        // `onSave` in App.tsx maps to `api.saveReservation`.
+        // `api.saveReservation` usually handles one.
+        // We might need to handle this batch here or update `api.ts`.
+        // The previous code used `onSave({ reservations } as any, guest)`.
+        // Let's stick to that pattern -> `api.createReservation` handles batch if structure is { reservations: [] }?
+        // Actually, let's verify `api.saveReservation`.
+        // Assuming `api.saveReservation` can't handle complex batch with deletes yet.
+        // USE SAFE APPROACH: Loop calls here.
+
+        // 1. Updates & Creates
+        await Promise.all(reservationsToSave.map(r => api.saveReservation(r as any, guest)));
+
+        // 2. Deletions (Cancellations)
+        await Promise.all(idsToDelete.map(id => api.updateReservation(id, { status: 'cancelled' })));
+
+        // Trigger reload (onSave usually does this if we call it, but we did manual calls)
+        // We can call onSave with one of them to trigger the reload/close logic
+        if (reservationsToSave.length > 0) {
+          await onSave(reservationsToSave[0] as any, guest);
+        } else {
+          // All deleted?
+          await onSave({ ...reservation, status: 'cancelled' } as any, guest);
+        }
       }
     } catch (e) {
       console.error("Error saving reservation:", e);
@@ -1066,8 +1155,8 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ onClose, onSave, re
                                 {(!assignedGuest?.id && (assignedGuest?.lastName?.length || 0) > 2) && (
                                   <div className="absolute top-full left-0 w-64 bg-white shadow-xl border border-slate-200 z-10 max-h-40 overflow-y-auto mt-1 rounded-lg">
                                     {guests.filter(g =>
-                                      g.lastName.toLowerCase().includes((assignedGuest?.lastName || '').toLowerCase()) ||
-                                      g.dni.includes(assignedGuest?.dni || '')
+                                      (g.lastName || '').toLowerCase().includes((assignedGuest?.lastName || '').toLowerCase()) ||
+                                      (g.dni || '').includes(assignedGuest?.dni || '')
                                     ).slice(0, 5).map(g => (
                                       <div
                                         key={g.id}

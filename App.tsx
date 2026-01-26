@@ -31,7 +31,7 @@ const MainApp: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isResModalOpen, setIsResModalOpen] = useState(false);
   const [selectedResId, setSelectedResId] = useState<string | null>(null);
-  const [initialResData, setInitialResData] = useState<{ date: Date; roomId?: number; endDate?: Date; isGroup?: boolean } | null>(null);
+  const [initialResData, setInitialResData] = useState<{ date: Date; roomId?: number; endDate?: Date; isGroup?: boolean; groupId?: string } | null>(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -262,6 +262,16 @@ const MainApp: React.FC = () => {
               rooms={rooms}
               onNewGroup={() => { setSelectedResId(null); setInitialResData({ date: new Date(), isGroup: true }); setIsResModalOpen(true); }}
               onReload={loadData}
+              onAddToGroup={(groupId) => {
+                setSelectedResId(null);
+                setInitialResData({ date: new Date(), isGroup: true, groupId });
+                setIsResModalOpen(true);
+              }}
+              onEditGroup={(resId) => {
+                setSelectedResId(resId);
+                setInitialResData(null);
+                setIsResModalOpen(true);
+              }}
             />
           )}
 
@@ -294,6 +304,7 @@ const MainApp: React.FC = () => {
           initialRoomId={initialResData?.roomId}
           initialEndDate={initialResData?.endDate}
           initialIsGroup={initialResData?.isGroup}
+          initialGroupId={initialResData?.groupId}
         />
       )}
 

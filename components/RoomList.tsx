@@ -38,6 +38,7 @@ const RoomList: React.FC<RoomListProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const [viewingRoom, setViewingRoom] = useState<Room | null>(null);
+  const [loadingOp, setLoadingOp] = useState<string | null>(null); // 'delete-ID', 'block-ID', 'status-ID'
 
   React.useEffect(() => {
     if (viewingRoom) {
@@ -224,16 +225,17 @@ const RoomList: React.FC<RoomListProps> = ({
                     }}
                     className="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:border-rose-300"
                   >
-                    BLOQUEAR
+                    {loadingOp === `block-${room.id}` ? '...' : 'BLOQUEAR'}
                   </button>
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       setBlockingModal({ roomId: room.id, mode: 'unblock' });
                     }}
-                    className="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300"
+                    disabled={!!loadingOp}
+                    className="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 disabled:opacity-50"
                   >
-                    DISPONIBLE
+                    {loadingOp === `unblock-${room.id}` ? '...' : 'DISPONIBLE'}
                   </button>
                 </div>
               </div>
@@ -344,7 +346,27 @@ const RoomList: React.FC<RoomListProps> = ({
                           className="text-emerald-500 hover:text-emerald-700 font-bold text-xs"
                           title="Desbloquear"
                         >
-                          ✅
+                          {loadingOp === `unblock-${room.id}` ? '...' : '✅'}
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (window.confirm('¿Seguro que desea eliminar esta habitación?')) {
+                              try {
+                                setLoadingOp(`delete-${room.id}`);
+                                await onDeleteRoom(room.id);
+                              } catch (error) {
+                                console.error(error);
+                              } finally {
+                                setLoadingOp(null);
+                              }
+                            }
+                          }}
+                          className="text-slate-400 hover:text-red-600 font-bold text-xs"
+                          title="Eliminar"
+                          disabled={!!loadingOp}
+                        >
+                          {loadingOp === `delete-${room.id}` ? '...' : '🗑️'}
                         </button>
                       </td>
                     </tr>
@@ -363,10 +385,22 @@ const RoomList: React.FC<RoomListProps> = ({
           mode={blockingModal.mode}
           onClose={() => setBlockingModal(null)}
           onConfirmBlock={async (roomId, start, end, reason) => {
-            if (onBlockRoom) await onBlockRoom(roomId, start, end, reason);
+            try {
+              setLoadingOp(`block-${roomId}`);
+              setBlockingModal(null);
+              if (onBlockRoom) await onBlockRoom(roomId, start, end, reason);
+            } finally {
+              setLoadingOp(null);
+            }
           }}
           onConfirmUnblock={async (roomId, start, end) => {
-            if (onUnblockRoom) await onUnblockRoom(roomId, start, end);
+            try {
+              setLoadingOp(`unblock-${roomId}`);
+              setBlockingModal(null);
+              if (onUnblockRoom) await onUnblockRoom(roomId, start, end);
+            } finally {
+              setLoadingOp(null);
+            }
           }}
         />
       )}

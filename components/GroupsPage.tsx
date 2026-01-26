@@ -10,6 +10,8 @@ interface GroupsPageProps {
     rooms: Room[];
     onNewGroup: () => void;
     onReload?: () => Promise<void>;
+    onAddToGroup: (groupId: string) => void;
+    onEditGroup: (reservationId: string) => void;
 }
 
 interface GroupSummary {
@@ -27,7 +29,7 @@ interface GroupSummary {
     reservations: Reservation[];
 }
 
-const GroupsPage: React.FC<GroupsPageProps> = ({ reservations, guests, rooms, onNewGroup, onReload }) => {
+const GroupsPage: React.FC<GroupsPageProps> = ({ reservations, guests, rooms, onNewGroup, onReload, onAddToGroup, onEditGroup }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     // Helper to extract finance config from Guest observations
@@ -529,6 +531,20 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ reservations, guests, rooms, on
                             </div>
 
                             <div className="flex gap-2">
+                                <button
+                                    onClick={() => onAddToGroup(group.groupId)}
+                                    className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest border border-blue-200 transition-all flex items-center gap-2"
+                                    title="Agregar habitación a este grupo"
+                                >
+                                    + Habitación
+                                </button>
+                                <button
+                                    onClick={() => onEditGroup(group.reservations[0].id)}
+                                    className="bg-amber-100 hover:bg-amber-200 text-amber-700 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest border border-amber-200 transition-all flex items-center gap-2"
+                                    title="Editar todas las habitaciones del grupo"
+                                >
+                                    ✏️ Editar Grupo
+                                </button>
                                 <button
                                     onClick={() => { setSelectedGroup(group); setFinanceModalOpen(true); }}
                                     className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest border border-purple-200 transition-all flex items-center gap-2"
